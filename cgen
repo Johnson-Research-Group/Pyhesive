@@ -3,6 +3,7 @@ import sys, argparse, logging, meshio, pymetis
 import numpy as np
 from collections import defaultdict
 from scipy import sparse
+import gc
 
 class OptionsDataBase:
     MeshFileIn = None
@@ -14,57 +15,6 @@ class OptionsDataBase:
     def __init__(self):
         pass
 
-class Mesh:
-    cDim = 0
-    cells = None
-    verts = None
-    c2v = {}
-    v2c = defaultdict(list)
-    c2c = None
-    v2v = None
-
-    def __init__(self, meshIn):
-        if not isinstance(meshIn, meshio.Mesh):
-            raise TypeError("Opts must be of type" + type(OptionsDataBase))
-        self.cells = meshIn.cells_dict['tetra']
-        self.verts = meshIn.points
-        self.cDim = 4
-
-    def Setup(self):
-        self.Symmetrize()
-        self.GenerateAdjacency()
-
-    def Symmetrize(self):
-        ne = len(self.cells)
-        element_ids = np.empty((ne, self.cDim), dtype=np.intp)
-        element_ids[:] = np.arange(ne).reshape(-1, 1)
-
-        V2E = sparse.coo_matrix(
-            (np.ones((ne*self.cDim,), dtype=np.intp),
-            (self.cells.ravel(),
-            element_ids.ravel(),)))
-        self.c2c = V2E.T @ V2E
-        self.v2v = V2E @ V2E.T
-        del V2E
-        self.c2c.eliminate_zeros()
-        self.v2v.eliminate_zeros()
-
-        self.c2v = dict(enumerate(self.cells))
-        for cell,vlist in self.c2v.items():
-            for vertex in vlist:
-                self.v2c[vertex].append(cell)
-        self.v2c = {k:np.array(v) for k, v in self.v2c.items()}
-
-    def GenerateAdjacency(self):
-        #E2E = V2E.T @ V2E
-        #V2V = V2E @ V2E.T
-        pass
-
-
-    def Partition(self):
-        pass
-
-
 class CGen:
     log = None
     OptCtx = None
@@ -73,7 +23,7 @@ class CGen:
     def __init__(self, Opts):
         if not isinstance(Opts, OptionsDataBase):
             raise TypeError("Opts must be of type" + type(OptionsDataBase))
-        slog = logging.getLogger(__name__)
+        slog = logging.getLogger(self.__class__.__name__)
         slog.setLevel(Opts.vlevel)
         slog.propagate = False
         ch = logging.StreamHandler(Opts.stream)
@@ -86,7 +36,7 @@ class CGen:
         self.OptCtx = Opts
 
     def SetMesh(self, msh):
-        self.Mesh = Mesh(msh)
+        self.Mesh = Mesh(self.OptCtx, msh)
 
     def Setup(self):
         self.Mesh.Setup()
@@ -94,20 +44,105 @@ class CGen:
     def PartitionMesh(self):
         self.Mesh.Partition()
 
+class Mesh:
+    cDim = 0
+    coords = None
+    c2v = {}
+    v2c = defaultdict(list)
+    CellAdj = []
+
+    def __init__(self, Opts, meshIn):
+        slog = logging.getLogger(self.__class__.__name__)
+        slog.setLevel(Opts.vlevel)
+        slog.propagate = False
+        ch = logging.StreamHandler(Opts.stream)
+        ch.setLevel(Opts.vlevel)
+        ch.propagate = False
+        formatter = logging.Formatter('%(message)s')
+        ch.setFormatter(formatter)
+        slog.addHandler(ch)
+        self.log = slog
+        if not isinstance(meshIn, meshio.Mesh):
+            raise TypeError("Opts must be of type" + type(OptionsDataBase))
+        self.cells = meshIn.cells_dict['tetra']
+        self.coords = meshIn.points
+        self.cDim = len(self.cells[0])
+
+    def Setup(self):
+        self.Symmetrize()
+        self.GenerateAdjacency()
+
+    def Symmetrize(self):
+        self.c2v = dict(enumerate(self.cells))
+        for cell,vlist in self.c2v.items():
+            for vertex in vlist:
+                self.v2c[vertex].append(cell)
+        self.v2c = {k:np.array(v) for k, v in self.v2c.items()}
+
+    def BuildAdjacencyMatrix(self, format=None):
+        def matsize(a):
+            sum = 0
+            if isinstance(a, sparse.csr_matrix) or isinstance(a, sparse.csc_matrix):
+                sum = a.data.nbytes + a.indptr.nbytes + a.indices.nbytes
+            elif isinstance(a, sparse.lil_matrix):
+                sum = a.data.nbytes + a.rows.nbytes
+            elif isinstance(a, sparse.coo_matrix):
+                sum = a.col.nbytes + a.row.nbytes + a.data.nbytes
+            return sum
+        ne = len(self.cells)
+        element_ids = np.empty((ne, self.cDim), dtype=np.intp)
+        element_ids[:] = np.arange(ne).reshape(-1, 1)
+
+        v2e = sparse.coo_matrix(
+            (np.ones((ne*self.cDim,), dtype=np.intp),
+            (self.cells.ravel(),
+            element_ids.ravel(),)))
+        v2e = v2e.tocsr(copy=False)
+        c2c = v2e.T @ v2e
+        v2v = v2e @ v2e.T
+        self.log.info("c2c mat size %d bytes" % matsize(c2c))
+        c2c = c2c.asformat(format, copy=False)
+        self.log.info("c2c mat size after compression %d bytes" % matsize(c2c))
+        self.log.info("v2v mat size %d bytes" % matsize(v2v))
+        v2v = v2v.asformat(format, copy=False)
+        self.log.info("v2v mat size after, compression %d bytes" % matsize(v2v))
+        return c2c, v2v
+
+    def GenerateAdjacency(self):
+        def symmetric(a, atol=1e-10):
+            return (abs(a-a.T)>atol).nnz == 0
+
+        c2c, _ = self.BuildAdjacencyMatrix(format='lil')
+        ne = len(self.cells)
+        self.CellAdj = [[] for _ in range(ne)]
+        for rowindex, row in enumerate(c2c.data):
+            sharedfaces = [i for i,k in enumerate(row) if k > 2]
+            rowV = c2c.rows[rowindex]
+            self.CellAdj[rowindex] = [rowV[j] for j in sharedfaces]
+
+    def Partition(self):
+        ncuts, mem = pymetis.part_graph(2, adjacency=self.CellAdj)
+        print(ncuts)
+        return
+
 def CGenInitialize():
+    gc.set_debug(gc.DEBUG_UNCOLLECTABLE | gc.DEBUG_SAVEALL)
     args = OptionsDataBase()
     path = "<path>"
     string = "<string>"
     parser = argparse.ArgumentParser(description='Insert Cohesive Elements Into Mesh', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-i', '--input', required=False, metavar=path, help='Specify the input mesh file', dest='MeshFileIn')
     parser.add_argument('-f', '--format', required=False, metavar=string, help='Specify the input mesh file format', dest='MeshFormatIn')
-    parser.add_argument('-l', '--log-file', nargs=1, default=sys.stdout.name, metavar=path, help='Log output to file instead of STDOUT', dest='stdout')
+    parser.add_argument('-l', '--log-file', nargs=1, default=sys.stdout.name, metavar=path, help='Log output to file instead of STDOUT', dest='stream')
     parser.add_argument('-v', '--verbose', default=0, action='count', help='Increase verbosity of logging statements, default no logging', dest='verbosity')
     parser.parse_args(namespace=args)
+    if args.stream is not sys.stdout.name:
+        args.stream = open(args.stream[0], 'w')
+    else:
+        args.stream = sys.stdout
     for verb in range(args.verbosity):
         if args.vlevel >= 20: args.vlevel -= 10
     cgen = CGen(args)
-    del args
     return cgen
 
 def main():
