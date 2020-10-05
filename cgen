@@ -1,9 +1,13 @@
 #! /usr/bin/env python3
-import sys, argparse, logging, meshio, pymetis
+import sys, argparse, logging, meshio, pymetis, atexit, gc
 import numpy as np
 from collections import defaultdict
 from scipy import sparse
-import gc
+
+infoDict = {
+    'tetra' : [3, 4],
+    'triangle' : [2, 3]
+    }
 
 class OptionsDataBase:
     MeshFileIn = None
@@ -11,16 +15,28 @@ class OptionsDataBase:
     verbosity = 1
     vlevel = 50
     stream = sys.stdout.name
+    __registered_exit = False
 
     def __init__(self):
-        pass
+        if not self.__registered_exit:
+            atexit.register(self.Finalize)
+            self.__registered_exit = True
+
+    def Finalize(self):
+        self.stream.flush()
+        atexit.unregister(self.Finalize)
+        self.__registered_exit = False
 
 class CGen:
-    log = None
-    OptCtx = None
-    Mesh = None
+    __log = None
+    __OptCtx = None
+    __Mesh = None
+    __registered_exit = False
 
     def __init__(self, Opts):
+        if not self.__registered_exit:
+            atexit.register(self.Finalize)
+            self.__registered_exit = True
         if not isinstance(Opts, OptionsDataBase):
             raise TypeError("Opts must be of type" + type(OptionsDataBase))
         slog = logging.getLogger(self.__class__.__name__)
@@ -32,26 +48,60 @@ class CGen:
         formatter = logging.Formatter('%(message)s')
         ch.setFormatter(formatter)
         slog.addHandler(ch)
-        self.log = slog
-        self.OptCtx = Opts
+        self.__log = slog
+        self.__OptCtx = Opts
 
-    def SetMesh(self, msh):
-        self.Mesh = Mesh(self.OptCtx, msh)
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, tb):
+        if exc_type is not None:
+            import traceback
+            traceback.print_exception(exc_type, exc_value, tb)
+        self.Finalize()
+        return True
+
+    def Finalize(self):
+        self.__Mesh.Finalize()
+        self.__OptCtx.Finalize()
+        self.__Mesh = None
+        self.__OptCtx = None
+        handlers = self.__log.handlers[:]
+        for handler in handlers:
+            handler.flush()
+            handler.close()
+            self.__log.removeHandler(handler)
+        self.__log = None
+        atexit.unregister(self.Finalize)
+        self.__registered_exit = False
 
     def Setup(self):
-        self.Mesh.Setup()
+        msh = meshio.read(self.__OptCtx.MeshFileIn, self.__OptCtx.MeshFormatIn)
+        self.__Mesh = Mesh(self.__OptCtx, msh)
+        self.__Mesh.Setup()
 
     def PartitionMesh(self):
-        self.Mesh.Partition()
+        self.__Mesh.Partition()
+
 
 class Mesh:
-    cDim = 0
-    coords = None
-    c2v = {}
-    v2c = defaultdict(list)
-    CellAdj = []
+    __log = None
+    __cDim = 0
+    __coords = None
+    __cells = None
+    __bdCells = []
+    __faceDim = 0
+    __nFaces = 0
+    __nc = 0
+    __c2v = {}
+    __v2c = defaultdict(list)
+    __cAdj = []
+    __registered_exit = False
 
     def __init__(self, Opts, meshIn):
+        if not self.__registered_exit:
+            atexit.register(self.Finalize)
+            self.__registered_exit = True
         slog = logging.getLogger(self.__class__.__name__)
         slog.setLevel(Opts.vlevel)
         slog.propagate = False
@@ -61,23 +111,41 @@ class Mesh:
         formatter = logging.Formatter('%(message)s')
         ch.setFormatter(formatter)
         slog.addHandler(ch)
-        self.log = slog
+        self.__log = slog
         if not isinstance(meshIn, meshio.Mesh):
             raise TypeError("Opts must be of type" + type(OptionsDataBase))
-        self.cells = meshIn.cells_dict['tetra']
-        self.coords = meshIn.points
-        self.cDim = len(self.cells[0])
+        self.__ctype = meshIn.cells[-1].type
+        self.__cells = meshIn.cells_dict[self.__ctype]
+        self.__coords = meshIn.points
+        self.__cDim = len(self.__cells[0])
+        self.__faceDim = infoDict[self.__ctype][0]
+        self.__nFaces = infoDict[self.__ctype][1]
+        self.__nc = len(self.__cells)
+
+    def Finalize(self):
+        handlers = self.__log.handlers[:]
+        for handler in handlers:
+            handler.flush()
+            handler.close()
+            self.__log.removeHandler(handler)
+        self.__log = None
+        atexit.unregister(self.Finalize)
+        self.__registered_exit = False
+
+    def l2s(self, mylist):
+        return ', '.join(map(str, myList))
 
     def Setup(self):
         self.Symmetrize()
         self.GenerateAdjacency()
+        gc.collect()
 
     def Symmetrize(self):
-        self.c2v = dict(enumerate(self.cells))
-        for cell,vlist in self.c2v.items():
+        self.c2v = dict(enumerate(self.__cells))
+        for cell,vlist in self.__c2v.items():
             for vertex in vlist:
-                self.v2c[vertex].append(cell)
-        self.v2c = {k:np.array(v) for k, v in self.v2c.items()}
+                self.__v2c[vertex].append(cell)
+        self.__v2c = {k:np.array(v) for k, v in self.__v2c.items()}
 
     def BuildAdjacencyMatrix(self, format=None):
         def matsize(a):
@@ -89,23 +157,23 @@ class Mesh:
             elif isinstance(a, sparse.coo_matrix):
                 sum = a.col.nbytes + a.row.nbytes + a.data.nbytes
             return sum
-        ne = len(self.cells)
-        element_ids = np.empty((ne, self.cDim), dtype=np.intp)
+        ne = self.__nc
+        element_ids = np.empty((ne, self.__cDim), dtype=np.intp)
         element_ids[:] = np.arange(ne).reshape(-1, 1)
 
         v2e = sparse.coo_matrix(
-            (np.ones((ne*self.cDim,), dtype=np.intp),
-            (self.cells.ravel(),
+            (np.ones((ne*len(element_ids[0]),), dtype=np.intp),
+            (self.__cells.ravel(),
             element_ids.ravel(),)))
         v2e = v2e.tocsr(copy=False)
         c2c = v2e.T @ v2e
         v2v = v2e @ v2e.T
-        self.log.info("c2c mat size %d bytes" % matsize(c2c))
+        self.__log.info("c2c mat size %d bytes" % matsize(c2c))
         c2c = c2c.asformat(format, copy=False)
-        self.log.info("c2c mat size after compression %d bytes" % matsize(c2c))
-        self.log.info("v2v mat size %d bytes" % matsize(v2v))
+        self.__log.info("c2c mat size after compression %d bytes" % matsize(c2c))
+        self.__log.info("v2v mat size %d bytes" % matsize(v2v))
         v2v = v2v.asformat(format, copy=False)
-        self.log.info("v2v mat size after, compression %d bytes" % matsize(v2v))
+        self.__log.info("v2v mat size after, compression %d bytes" % matsize(v2v))
         return c2c, v2v
 
     def GenerateAdjacency(self):
@@ -113,25 +181,31 @@ class Mesh:
             return (abs(a-a.T)>atol).nnz == 0
 
         c2c, _ = self.BuildAdjacencyMatrix(format='lil')
-        ne = len(self.cells)
-        self.CellAdj = [[] for _ in range(ne)]
+        faceDim = self.__faceDim
+        nfaces = self.__nFaces
+        self.__cAdj = [[] for _ in range(len(self.__cells))]
         for rowindex, row in enumerate(c2c.data):
-            sharedfaces = [i for i,k in enumerate(row) if k > 2]
+            sharedfaces = [i for i,k in enumerate(row) if k == faceDim]
             rowV = c2c.rows[rowindex]
-            self.CellAdj[rowindex] = [rowV[j] for j in sharedfaces]
+            self.__cAdj[rowindex] = [rowV[j] for j in sharedfaces]
+            #self.log.debug("cell %d adjacent to %s" % (rowindex, self.l2s(self.__cAdj[rowindex])))
+            if (len(sharedfaces) != nfaces):
+                self.__bdCells.append(rowindex)
+                self.__log.debug("cell %d marked on boundary" % (rowindex))
+            bla = 2
 
     def Partition(self):
-        ncuts, mem = pymetis.part_graph(2, adjacency=self.CellAdj)
-        print(ncuts)
+        npart = int(np.ceil(self.__nc/10))
+        ncuts, mem = pymetis.part_graph(npart, adjacency=self.__cAdj)
         return
 
-def CGenInitialize():
+def OptionsInitialize():
     gc.set_debug(gc.DEBUG_UNCOLLECTABLE | gc.DEBUG_SAVEALL)
     args = OptionsDataBase()
     path = "<path>"
     string = "<string>"
     parser = argparse.ArgumentParser(description='Insert Cohesive Elements Into Mesh', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-i', '--input', required=False, metavar=path, help='Specify the input mesh file', dest='MeshFileIn')
+    parser.add_argument('-i', '--input', required=True, metavar=path, help='Specify the input mesh file', dest='MeshFileIn')
     parser.add_argument('-f', '--format', required=False, metavar=string, help='Specify the input mesh file format', dest='MeshFormatIn')
     parser.add_argument('-l', '--log-file', nargs=1, default=sys.stdout.name, metavar=path, help='Log output to file instead of STDOUT', dest='stream')
     parser.add_argument('-v', '--verbose', default=0, action='count', help='Increase verbosity of logging statements, default no logging', dest='verbosity')
@@ -142,16 +216,13 @@ def CGenInitialize():
         args.stream = sys.stdout
     for verb in range(args.verbosity):
         if args.vlevel >= 20: args.vlevel -= 10
-    cgen = CGen(args)
-    return cgen
+    return args
 
 def main():
-    CGen = CGenInitialize()
-    meshIn = meshio.read(CGen.OptCtx.MeshFileIn, CGen.OptCtx.MeshFormatIn)
-    CGen.SetMesh(meshIn)
-    CGen.Setup()
-    CGen.PartitionMesh()
-    return
+    opts = OptionsInitialize()
+    with CGen(opts) as cgen:
+        cgen.Setup()
+        cgen.PartitionMesh()
 
 if __name__ == "__main__":
     main()
