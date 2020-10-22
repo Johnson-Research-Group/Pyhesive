@@ -10,20 +10,21 @@ infoDict = {
     }
 
 class OptionsDataBase:
-    MeshFileIn = None
-    MeshFormatIn = None
-    verbosity = 1
-    vlevel = 50
-    stream = sys.stdout.name
+    __MeshFileIn = None
+    __MeshFormatIn = None
+    __verbosity = 1
+    __vlevel = 50
+    __stream = sys.stdout.name
     __registered_exit = False
 
     def __init__(self):
+        self.__vlevel = 50
         if not self.__registered_exit:
             atexit.register(self.Finalize)
             self.__registered_exit = True
 
     def Finalize(self):
-        self.stream.flush()
+        self.__stream.flush()
         atexit.unregister(self.Finalize)
         self.__registered_exit = False
 
@@ -40,10 +41,10 @@ class CGen:
         if not isinstance(Opts, OptionsDataBase):
             raise TypeError("Opts must be of type" + type(OptionsDataBase))
         slog = logging.getLogger(self.__class__.__name__)
-        slog.setLevel(Opts.vlevel)
+        slog.setLevel(Opts._OptionsDataBase__vlevel)
         slog.propagate = False
-        ch = logging.StreamHandler(Opts.stream)
-        ch.setLevel(Opts.vlevel)
+        ch = logging.StreamHandler(Opts._OptionsDataBase__stream)
+        ch.setLevel(Opts._OptionsDataBase__vlevel)
         ch.propagate = False
         formatter = logging.Formatter('%(message)s')
         ch.setFormatter(formatter)
@@ -76,13 +77,13 @@ class CGen:
         self.__registered_exit = False
 
     def Setup(self):
-        msh = meshio.read(self.__OptCtx.MeshFileIn, self.__OptCtx.MeshFormatIn)
-        self.__Mesh = Mesh(self.__OptCtx, msh)
+        msh = meshio.read(self._CGen__OptCtx._OptionsDataBase__MeshFileIn,
+                          self._CGen__OptCtx._OptionsDataBase__MeshFormatIn)
+        self.__Mesh = Mesh(self._CGen__OptCtx, msh)
         self.__Mesh.Setup()
 
     def PartitionMesh(self):
         self.__Mesh.Partition()
-
 
 class Mesh:
     __log = None
@@ -103,10 +104,10 @@ class Mesh:
             atexit.register(self.Finalize)
             self.__registered_exit = True
         slog = logging.getLogger(self.__class__.__name__)
-        slog.setLevel(Opts.vlevel)
+        slog.setLevel(Opts._OptionsDataBase__vlevel)
         slog.propagate = False
-        ch = logging.StreamHandler(Opts.stream)
-        ch.setLevel(Opts.vlevel)
+        ch = logging.StreamHandler(Opts._OptionsDataBase__stream)
+        ch.setLevel(Opts._OptionsDataBase__vlevel)
         ch.propagate = False
         formatter = logging.Formatter('%(message)s')
         ch.setFormatter(formatter)
@@ -141,7 +142,7 @@ class Mesh:
         gc.collect()
 
     def Symmetrize(self):
-        self.c2v = dict(enumerate(self.__cells))
+        self.__c2v = dict(enumerate(self.__cells))
         for cell,vlist in self.__c2v.items():
             for vertex in vlist:
                 self.__v2c[vertex].append(cell)
@@ -192,7 +193,6 @@ class Mesh:
             if (len(sharedfaces) != nfaces):
                 self.__bdCells.append(rowindex)
                 self.__log.debug("cell %d marked on boundary" % (rowindex))
-            bla = 2
 
     def Partition(self):
         npart = int(np.ceil(self.__nc/10))
@@ -205,17 +205,18 @@ def OptionsInitialize():
     path = "<path>"
     string = "<string>"
     parser = argparse.ArgumentParser(description='Insert Cohesive Elements Into Mesh', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-i', '--input', required=True, metavar=path, help='Specify the input mesh file', dest='MeshFileIn')
-    parser.add_argument('-f', '--format', required=False, metavar=string, help='Specify the input mesh file format', dest='MeshFormatIn')
-    parser.add_argument('-l', '--log-file', nargs=1, default=sys.stdout.name, metavar=path, help='Log output to file instead of STDOUT', dest='stream')
-    parser.add_argument('-v', '--verbose', default=0, action='count', help='Increase verbosity of logging statements, default no logging', dest='verbosity')
+    parser.add_argument('-i', '--input', required=True, metavar=path, help='Specify the input mesh file', dest='_OptionsDataBase__MeshFileIn')
+    parser.add_argument('-f', '--format', required=False, metavar=string, help='Specify the input mesh file format', dest='_OptionsDataBase__MeshFormatIn')
+    parser.add_argument('-l', '--log-file', nargs=1, default=sys.stdout.name, metavar=path, help='Log output to file instead of STDOUT', dest='_OptionsDataBase__stream')
+    parser.add_argument('-v', '--verbose', default=0, action='count', help='Increase verbosity of logging statements, default no logging', dest='_OptionsDataBase__verbosity')
     parser.parse_args(namespace=args)
-    if args.stream is not sys.stdout.name:
-        args.stream = open(args.stream[0], 'w')
+    if args._OptionsDataBase__stream is not sys.stdout.name:
+        args._OptionsDataBase__stream = open(args._OptionsDataBase__stream[0], 'w')
     else:
-        args.stream = sys.stdout
-    for verb in range(args.verbosity):
-        if args.vlevel >= 20: args.vlevel -= 10
+        args._OptionsDataBase__stream = sys.stdout
+    for verb in range(args._OptionsDataBase__verbosity):
+        if args._OptionsDataBase__vlevel >= 20:
+            args._OptionsDataBase__vlevel -= 10
     return args
 
 def main():
