@@ -6,7 +6,6 @@ Created on Mon Nov  9 17:46:31 2020
 @author: jacobfaibussowitsch
 """
 import logging, atexit, meshio
-from CGenMesh import Mesh
 from CGenOptionsDB import OptionsDataBase
 
 class CGen:
@@ -22,10 +21,10 @@ class CGen:
         if not isinstance(Opts, OptionsDataBase):
             raise TypeError("Opts must be of type" + type(OptionsDataBase))
         slog = logging.getLogger(self.__class__.__name__)
-        slog.setLevel(Opts.vlevel)
+        slog.setLevel(Opts.vLevel)
         slog.propagate = False
         ch = logging.StreamHandler(Opts.stream)
-        ch.setLevel(Opts.vlevel)
+        ch.setLevel(Opts.vLevel)
         ch.propagate = False
         formatter = logging.Formatter('%(message)s')
         ch.setFormatter(formatter)
@@ -58,8 +57,9 @@ class CGen:
         self.registered_exit = False
 
     def Setup(self):
-        msh = meshio.read(self.OptCtx.MeshFileIn,
-                          self.OptCtx.MeshFormatIn)
+        from CGenMesh import Mesh
+        msh = meshio.read(self.OptCtx.meshFileIn,
+                          self.OptCtx.meshFormatIn)
         self.Mesh = Mesh(self.OptCtx, msh)
         self.Mesh.Setup()
 
@@ -67,4 +67,9 @@ class CGen:
         self.Mesh.Partition()
 
     def GenerateElements(self):
-        self.Mesh.GenerateBoundaryElements()
+        self.Mesh.ExtractLocalBoundaryElements()
+
+    def OutputMesh(self):
+        meshPoints, meshCells = self.Mesh.PrepareOutputMesh()
+        meshOut = meshio.Mesh(meshPoints, meshCells)
+        meshio.write(self.OptCtx.meshFileOut, meshOut, file_format=self.OptCtx.meshFormatOut)

@@ -6,6 +6,8 @@ def main():
     opts = OptionsInitialize()
     with CGen(opts) as cgen:
         cgen.Setup()
+        # TODO THIS IS DEBUG, REMOVE
+        cgen.OutputMesh()
         cgen.PartitionMesh()
         cgen.GenerateElements()
 
