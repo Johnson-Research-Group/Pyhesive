@@ -26,7 +26,7 @@ class CGen:
         ch = logging.StreamHandler(Opts.stream)
         ch.setLevel(Opts.vLevel)
         ch.propagate = False
-        formatter = logging.Formatter('%(message)s')
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s')
         ch.setFormatter(formatter)
         slog.addHandler(ch)
         self.log = slog
@@ -67,7 +67,8 @@ class CGen:
         self.Mesh.Partition()
 
     def GenerateElements(self):
-        self.Mesh.ExtractLocalBoundaryElements()
+        self.Mesh.CreateElements()
+        self.Mesh.UpdateVertices()
 
     def OutputMesh(self):
         meshPoints, meshCells = self.Mesh.PrepareOutputMesh()

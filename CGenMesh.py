@@ -17,6 +17,9 @@ infoDict = {
     'triangle' : [2, 3]
     }
 
+def FlatList(inlist):
+        return [item for sublist in inlist for item in sublist]
+
 class Mesh(CGen):
     OptCtx = None
     cDim = 0
@@ -50,7 +53,7 @@ class Mesh(CGen):
         ch = logging.StreamHandler(self.OptCtx.stream)
         ch.setLevel(self.OptCtx.vLevel)
         ch.propagate = False
-        formatter = logging.Formatter('%(message)s')
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s')
         ch.setFormatter(formatter)
         slog.addHandler(ch)
         self.log = slog
@@ -60,7 +63,7 @@ class Mesh(CGen):
         self.cDim = len(self.cells[0])
         self.faceDim = infoDict[self.cType][0]
         self.nFaces = infoDict[self.cType][1]
-
+        return
 
     def Finalize(self):
         handlers = self.log.handlers[:]
@@ -71,6 +74,7 @@ class Mesh(CGen):
         self.log = None
         atexit.unregister(self.Finalize)
         self.registered_exit = False
+        return
 
 
     def PrepareOutputMesh(self):
@@ -80,6 +84,7 @@ class Mesh(CGen):
     def Setup(self):
         self.Symmetrize()
         self.cAdj, self.bdCells, self.bdFaces = self.GenerateAdjacency()
+        return
 
 
     def Symmetrize(self):
@@ -88,6 +93,7 @@ class Mesh(CGen):
             for vertex in vlist:
                 self.v2c[vertex].append(cell)
         self.v2c = {k:np.array(v) for k, v in self.v2c.items()}
+        return
 
 
     def BuildAdjacencyMatrix(self, Cells=None, cDim=None, format=None):
@@ -175,10 +181,10 @@ class Mesh(CGen):
         if (self.ncuts == 0):
             raise RuntimeError("No cuts were made by partitioner")
         self.membership = np.array(membership, dtype=np.intp)
+        return
 
 
-    def ExtractLocalBoundaryElements(self):
-        bdDict = {}
+    def GenerateLocalBoundaryFaces(self):
         for part in range(self.OptCtx.numPart):
             # Extract the partition
             partition_g = np.argwhere(self.membership == part).ravel()
@@ -195,7 +201,55 @@ class Mesh(CGen):
             bdNodes = []
             for c_g in locBdCells_g:
                 c_l = np.argwhere(partition_g[bdCells_l] == c_g).ravel()[0]
-                bdNodes.append([item for sublist in bdFaces_l[c_l] for item in sublist])
-            enum = enumerate(bdNodes)
-            bdDict[part] = dict((i,j) for i,j in enum)
-        bla = 2
+                bdNodes.append(FlatList(bdFaces_l[c_l]))
+            yield dict((i,j) for i,j in enumerate(bdNodes))
+
+
+    def DuplicateAndInsertVertices(self, oldVertexList, globalDict = None):
+        try:
+            convertableVertices = [x for x in oldVertexList if x not in globalDict]
+        except TypeError:
+            pass
+        nv = len(self.coords)
+        newVertexList = range(nv, nv+len(convertableVertices))
+        for i,j in zip(convertableVertices, newVertexList):
+            self.log.debug("Duped vertex %d -> %d" % (i, j))
+        newVertexCoords = [self.coords[v] for v in convertableVertices]
+        self.coords = np.vstack((self.coords, newVertexCoords))
+        return dict(zip(convertableVertices, newVertexList))
+
+
+    def GenerateLocalConversion(self):
+        #newFaceDict = {}
+        convDict = {}
+        partConvDict = {}
+        # Iterate through partitions, faceDict contains dictionary of faces
+        for i, partition in enumerate(self.GenerateLocalBoundaryFaces()):
+            # old vertex IDs
+            oldVertices = list({s:None for s in FlatList(partition.values())})
+            # duplicate the vertices, return the duplicates new IDs
+            partConvDict[i] = self.DuplicateAndInsertVertices(oldVertices, convDict)
+            #newFaceDict[i] = {f:[partConvDict[x] if x in partConvDict else x for x in partition[f]] for f in partition}
+            convDict.update(partConvDict[i])
+            yield partConvDict[i]
+
+    def CreateElements(self):
+        return
+
+    def UpdateVertices(self):
+        def l2s(inlist):
+            string = ', '.join(map(str, inlist))
+            if string:
+                return string
+            return "No Change"
+
+        for i, locConv in enumerate(self.GenerateLocalConversion()):
+            locs = np.argwhere(self.membership == i).ravel()
+            part = np.empty(np.shape(self.cells[locs]), dtype=self.cells.dtype)
+            for j, cell in enumerate(self.cells[locs]):
+                part[j] = np.array([locConv[x] if x in locConv else x for x in cell])
+                self.log.debug("Updated vertices %s -> %s" % (\
+                                l2s(cell[np.where(cell != part[j])].tolist()),\
+                                l2s(part[j][np.where(cell != part[j])].tolist())))
+            self.cells[locs] = part
+        return
