@@ -67,10 +67,9 @@ class CGen:
         self.Mesh.Partition()
 
     def GenerateElements(self):
-        self.Mesh.CreateElements()
-        self.Mesh.UpdateVertices()
+        sourceVerts, mappedVerts = self.Mesh.RemapVertices()
+        self.Mesh.CreateElements(sourceVerts, mappedVerts)
 
     def OutputMesh(self):
-        meshPoints, meshCells = self.Mesh.PrepareOutputMesh()
-        meshOut = meshio.Mesh(meshPoints, meshCells)
+        meshOut = self.Mesh.PrepareOutputMesh()
         meshio.write(self.OptCtx.meshFileOut, meshOut, file_format=self.OptCtx.meshFormatOut)

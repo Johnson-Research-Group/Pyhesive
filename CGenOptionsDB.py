@@ -30,7 +30,7 @@ def OptionsInitialize():
     path = "<path>"
     string = "<string>"
     integer = "<int>"
-    defaultFormat = "vtk"
+    defaultFormat = "gmsh"
     defaultName = "cgenOutputMesh"
     parser = argparse.ArgumentParser(description="Insert Cohesive Elements Into Mesh", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-i', '--input', required=True, metavar=path, help="Specify the input mesh file", dest='meshFileIn')

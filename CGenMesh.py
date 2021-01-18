@@ -14,7 +14,10 @@ import numpy as np
 
 infoDict = {
     'tetra' : [3, 4],
-    'triangle' : [2, 3]
+    'triangle' : [2, 3],
+    'hexahedron' : [4, 8],
+    'wedge' : [3, 6],
+    'wedge12' : [6, 12]
     }
 
 def FlatList(inlist):
@@ -26,6 +29,7 @@ class Mesh(CGen):
     cType = None
     coords = None
     cells = None
+    cohesiveCells = None
     bdCells = []
     bdFaces = []
     faceDim = 0
@@ -78,7 +82,18 @@ class Mesh(CGen):
 
 
     def PrepareOutputMesh(self):
-        return self.coords, [(self.cType, self.cells)]
+        cells = [(self.cType, self.cells)]
+        if self.cohesiveCells is not None:
+            npts = len(self.cohesiveCells[0])
+            cohesiveType = None
+            for ctype, info in infoDict.items():
+                if info[1] == npts:
+                    cohesiveType = ctype
+                    break
+            if cohesiveType is None:
+                raise RuntimeError("Cohesive type not recognized!")
+            cells.append((cohesiveType, self.cohesiveCells))
+        return meshio.Mesh(self.coords, cells)
 
 
     def Setup(self):
@@ -233,23 +248,57 @@ class Mesh(CGen):
             convDict.update(partConvDict[i])
             yield partConvDict[i]
 
-    def CreateElements(self):
-        return
+    def RemapVertices(self):
+        '''
+        Identify internal vertices on partition edges, and remap them to new cohesive vertices
 
-    def UpdateVertices(self):
+        Returns
+        -------
+        np.array
+            list of pre-mapping vertices that underwent mapping
+        np.array
+            new vertex ID's mapped
+
+        '''
         def l2s(inlist):
-            string = ', '.join(map(str, inlist))
-            if string:
-                return string
-            return "No Change"
+            return ', '.join(map(str, inlist))
 
+        modSourceVertices = []
+        modDestVertices = []
         for i, locConv in enumerate(self.GenerateLocalConversion()):
             locs = np.argwhere(self.membership == i).ravel()
             part = np.empty(np.shape(self.cells[locs]), dtype=self.cells.dtype)
             for j, cell in enumerate(self.cells[locs]):
                 part[j] = np.array([locConv[x] if x in locConv else x for x in cell])
-                self.log.debug("Updated vertices %s -> %s" % (\
-                                l2s(cell[np.where(cell != part[j])].tolist()),\
-                                l2s(part[j][np.where(cell != part[j])].tolist())))
+                modLocs = np.where(cell != part[j])[0]
+                if modLocs.size:
+                    if (modLocs.size == self.faceDim):
+                        modSourceVertices.append(cell[modLocs])
+                        modDestVertices.append(part[j][modLocs])
+                        self.log.debug("Updated vertices %s -> %s" % (\
+                                        l2s(cell[modLocs].tolist()),\
+                                        l2s(part[j][modLocs].tolist())))
+                else:
+                    self.log.debug("No vertices to update")
             self.cells[locs] = part
+        return modSourceVertices, modDestVertices
+
+    def CreateElements(self, sourceVertices, mappedVertices):
+        '''
+        Parameters
+        ----------
+        sourceVertices : np.array
+            list of face vertices pre-mapping operation. Ordered such that normal points outward from cell centroid
+        mappedVertices : np.array
+            mapped (or duplicated) vertices, each entry corresponds to sourceVertices
+        '''
+        def l2s(inlist):
+            return ', '.join(map(str, inlist))
+
+        assert(len(sourceVertices) == len(mappedVertices))
+        newElems = []
+        for source, dest in zip(sourceVertices, mappedVertices):
+            newElems.append(np.hstack((dest,source)))
+            self.log.debug("Created new cohesive element %s" %(l2s(newElems[-1])))
+        self.cohesiveCells = np.array(newElems)
         return
