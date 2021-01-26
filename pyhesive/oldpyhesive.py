@@ -6,9 +6,8 @@ Created on Mon Nov  9 17:46:31 2020
 @author: jacobfaibussowitsch
 """
 import logging, atexit, meshio
-from CGenOptionsDB import OptionsDataBase
 
-class CGen:
+class Pyhesive:
     log = None
     OptCtx = None
     Mesh = None
@@ -18,8 +17,8 @@ class CGen:
         if not self.registered_exit:
             atexit.register(self.Finalize)
             self.registered_exit = True
-        if not isinstance(Opts, OptionsDataBase):
-            raise TypeError("Opts must be of type" + type(OptionsDataBase))
+        if not isinstance(Opts, Optsctx):
+            raise TypeError("Opts must be of type" + type(Optsctx))
         slog = logging.getLogger(self.__class__.__name__)
         slog.setLevel(Opts.vLevel)
         slog.propagate = False
@@ -57,9 +56,7 @@ class CGen:
         self.registered_exit = False
 
     def Setup(self):
-        from CGenMesh import Mesh
-        msh = meshio.read(self.OptCtx.meshFileIn,
-                          self.OptCtx.meshFormatIn)
+        msh = meshio.read(self.OptCtx.meshFileIn, self.OptCtx.meshFormatIn)
         self.Mesh = Mesh(self.OptCtx, msh)
         self.Mesh.Setup()
 

@@ -1,0 +1,10 @@
+*.prof
+*.pyc
+*.pyo
+*.env
+*.venv
+warp*
+__pycache__/
+env/
+venv/
+ENV/
