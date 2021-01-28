@@ -10,6 +10,7 @@ from .optsctx import Optsctx
 
 import logging, atexit, meshio, pymetis
 from collections import defaultdict
+from itertools import combinations
 from scipy import sparse
 import numpy as np
 
@@ -22,18 +23,7 @@ infoDict = {
 }
 
 class Mesh(Optsctx):
-    cDim = 0
-    cType = None
-    coords = None
-    cells = None
     cohesiveCells = None
-    bdCells = []
-    bdFaces = []
-    faceDim = 0
-    nFaces = 0
-    cAdj = []
-    ncuts = 0
-    membership = None
     registered_exit = False
 
     def __init__(self, mesh=None):
@@ -45,10 +35,10 @@ class Mesh(Optsctx):
             if not isinstance(mesh, meshio.Mesh):
                 raise TypeError("Mesh must be of type meshio.Mesh")
         slog = logging.getLogger(self.__class__.__name__)
-        slog.setLevel(super().vLevel)
+        slog.setLevel(self.vLevel)
         slog.propagate = False
-        ch = logging.StreamHandler(super().stream)
-        ch.setLevel(super().vLevel)
+        ch = logging.StreamHandler(self.stream)
+        ch.setLevel(self.vLevel)
         ch.propagate = False
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s')
         ch.setFormatter(formatter)
@@ -59,8 +49,10 @@ class Mesh(Optsctx):
         self.coords = mesh.points
         self.cDim = len(self.cells[0])
         self.faceDim = infoDict[self.cType][0]
-        self.nFaces = infoDict[self.cType][1]
-        self.cAdj, self.bdCells, self.bdFaces = self.GenerateAdjacency(self.cells)
+        self.log.debug("Cell dimension %d, type %s" % (self.cDim, self.cType))
+        self.log.debug("Face dimension %d" % self.faceDim)
+        self.adjMat = self.BuildAdjacencyMatrix(self.cells)
+        self.cAdj, self.bdCells, self.bdFaces = self.GenerateCellAdjacency(self.adjMat, self.cells, self.faceDim)
         if not self.registered_exit:
             atexit.register(self.Finalize)
             self.registered_exit = True
@@ -94,25 +86,34 @@ class Mesh(Optsctx):
             for ctype, info in infoDict.items():
                 if info[1] == npts:
                     cohesiveType = ctype
+                    self.log.debug("Generated %d cohesive elements of type '%s'" % (len(self.cohesiveCells), ctype))
                     break
             if cohesiveType is None:
                 raise RuntimeError("Cohesive type not recognized!")
             cells.append((cohesiveType, self.cohesiveCells))
+        else:
+            self.log.info("Generated 0 cohesive elements")
         meshOut = meshio.Mesh(self.coords, cells)
         meshio.write(self.meshFileOut, meshOut, file_format=self.meshFormatOut)
+        self.log.info("Wrote mesh to '%s' with format '%s'" % (self.meshFileOut, self.meshFormatOut))
 
     def PartitionMesh(self):
         self.ncuts, membership = pymetis.part_graph(self.numPart, adjacency=self.cAdj)
+        self.log.info("Number of partitions %d, cuts %d" % (self.numPart, self.ncuts))
         if (self.ncuts == 0):
             raise RuntimeError("No cuts were made by partitioner")
         self.membership = np.array(membership, dtype=np.intp)
         self.partitions = [np.argwhere(self.membership == x).ravel() for x in range(self.numPart)]
+        partCountSum = sum([len(x) for x in self.partitions])
+        if partCountSum != len(self.cells):
+            raise RuntimeError("Partition cell-count summ %d != global number of cells %d" % (partCountSum, len(self.cells)))
+
 
     def GenerateElements(self):
         sourceVerts, mappedVerts = self.RemapVertices()
         self.CreateElements(sourceVerts, mappedVerts)
 
-    def BuildAdjacencyMatrix(self, Cells, cDim=None, format='csr', v2v=False):
+    def BuildAdjacencyMatrix(self, cells, format='lil', v2v=False):
         def matsize(a):
             sum = 0
             if isinstance(a, sparse.csr_matrix) or isinstance(a, sparse.csc_matrix):
@@ -123,14 +124,12 @@ class Mesh(Optsctx):
                 sum = a.col.nbytes + a.row.nbytes + a.data.nbytes
             return sum
 
-        if cDim is None:
-            cDim = self.cDim
-        ne = len(Cells)
-        element_ids = np.empty((ne, cDim), dtype=np.intp)
+        ne = len(cells)
+        element_ids = np.empty((ne, len(cells[0])), dtype=np.intp)
         element_ids[:] = np.arange(ne).reshape(-1, 1)
         v2c = sparse.coo_matrix(
             (np.ones((ne*len(element_ids[0]),), dtype=np.intp),
-            (Cells.ravel(),
+            (cells.ravel(),
             element_ids.ravel(),)))
         v2c = v2c.tocsr(copy=False)
         c2c = v2c.T @ v2c
@@ -146,32 +145,26 @@ class Mesh(Optsctx):
         else:
             return c2c
 
-    def GenerateAdjacency(self, Cells, faceDim = None, nfaces = None):
-        from itertools import combinations
-
+    def GenerateCellAdjacency(self, adjMat, cells, faceDim):
         def list2dict(inlist):
             odict = defaultdict(list)
             for i in range(len(inlist)):
                 odict[i].append(inlist[i])
             return odict
 
-        if faceDim is None:
-            faceDim = self.faceDim
-        if nfaces is None:
-            nfaces = self.nFaces
-        c2c = self.BuildAdjacencyMatrix(Cells, format='lil')
-        adj = {}
         bdcells = []
+        adj = {}
         bdfaces = []
-        for rowindex, row in enumerate(c2c.data):
+        facesPerCell = len([_ for _ in combinations(range(len(cells[0])), faceDim)])
+        for rowindex, row in enumerate(adjMat.tolil(copy=False).data):
             sharedfaces = [i for i,k in enumerate(row) if k == faceDim]
-            adj[rowindex] = [c2c.rows[rowindex][j] for j in sharedfaces]
+            adj[rowindex] = [adjMat.rows[rowindex][j] for j in sharedfaces]
             self.log.debug("cell %d adjacent to %s" % (rowindex, l2s(adj[rowindex])))
-            if (len(sharedfaces) != nfaces):
+            if (len(sharedfaces) != facesPerCell):
                 self.log.debug("cell %d marked on boundary" % (rowindex))
                 bdcells.append(rowindex)
-                faces = [set(np.intersect1d(Cells[rowindex],Cells[c],assume_unique=True)) for c in adj[rowindex]]
-                comb = [set(c) for c in combinations(Cells[rowindex], faceDim)]
+                faces = [set(np.intersect1d(cells[rowindex],cells[c],assume_unique=True)) for c in adj[rowindex]]
+                comb = [set(c) for c in combinations(cells[rowindex], faceDim)]
                 bdfaces.append([list(face) for face in comb if face not in faces])
             else:
                 self.log.debug("cell %d marked interior" % (rowindex))
@@ -179,22 +172,20 @@ class Mesh(Optsctx):
 
     def GenerateLocalBoundaryFaces(self):
         # Extract the partition
-        for part in self.partitions:
-            # Generate boundaries for the entire partition, this will include
-            # both local and global boundary cells
-            _, bdCells_l, bdFaces_l = self.GenerateAdjacency(self.cells[part])
-            bdCells_g = part[bdCells_l]
-            # should be as many bdface entries as bd cells
-            assert(len(bdCells_l) == len(bdFaces_l))
-            # Find difference between global boundary cells and local+global
-            # boundary cells to isolate local boundary cells
-            locBdCells_g = np.setdiff1d(bdCells_g, self.bdCells,
-                                        assume_unique=True)
-            # Extract list of boundary faces and add them to dict
-            bdNodes = [flattenList(bdFaces_l[np.where(bdCells_g == x)[0][0]]) for x in locBdCells_g]
-            yield dict((i,j) for i,j in enumerate(bdNodes))
+        fl = flattenList(self.bdFaces)
+        for i, part in enumerate(self.partitions):
+            nc = len(part)
+            if not nc:
+                self.log.debug("Partition %d contains no cells" % i)
+                yield dict()
+            else:
+                self.log.debug("Partition %d contains (%d) cells %s" % (i, nc, l2s(part)))
+                subMat = self.adjMat[np.ix_(part, part)]
+                _, _, bdFaces_l = self.GenerateCellAdjacency(subMat, self.cells[part], self.faceDim)
+                bdNodes = [[f for f in c if f not in fl] for c in bdFaces_l]
+                yield dict((i,j) for i,j in enumerate(bdNodes))
 
-    def DuplicateAndInsertVertices(self, oldVertexList, globalDict = None):
+    def DuplicateAndInsertVerticesOLD(self, oldVertexList, globalDict = None):
         try:
             convertableVertices = [x for x in oldVertexList if x not in globalDict]
         except TypeError:
@@ -204,20 +195,98 @@ class Mesh(Optsctx):
         for i,j in zip(convertableVertices, newVertexList):
             self.log.debug("Duped vertex %d -> %d" % (i, j))
         newVertexCoords = [self.coords[v] for v in convertableVertices]
-        self.coords = np.vstack((self.coords, newVertexCoords))
+        if len(newVertexCoords):
+            self.coords = np.vstack((self.coords, newVertexCoords))
+        else:
+            self.log.debug("No vertices to duplicate")
         return dict(zip(convertableVertices, newVertexList))
 
-    def GenerateLocalConversion(self):
+    def DuplicateAndInsertVertices(self, oldVertexList, globalDict):
+        try:
+            convertableVertices = [x for x in oldVertexList if x not in globalDict]
+        except TypeError:
+            pass
+
+        lcv = len(convertableVertices)
+        if (lcv):
+            nv = len(self.coords)
+            newVertexList = range(nv, nv+lcv)
+            for i,j in zip(convertableVertices, newVertexList):
+                self.log.debug("Duped vertex %d -> %d" % (i, j))
+            newVertexCoords = [self.coords[v] for v in convertableVertices]
+            self.coords = np.vstack((self.coords, newVertexCoords))
+            return dict(zip(convertableVertices, newVertexList))
+        else:
+            self.log.debug("No vertices to duplicate")
+            return {}
+
+
+    def GenerateLocalConversionOLD(self):
         convDict = {}
-        partConvDict = {}
-        # Iterate through partitions, faceDict contains dictionary of faces
-        for i, partition in enumerate(self.GenerateLocalBoundaryFaces()):
+        for partition in self.GenerateLocalBoundaryFaces():
             # old vertex IDs
             oldVertices = list({s:None for s in flattenList(partition.values())})
             # duplicate the vertices, return the duplicates new IDs
-            partConvDict[i] = self.DuplicateAndInsertVertices(oldVertices, convDict)
-            convDict.update(partConvDict[i])
-            yield partConvDict[i]
+            partConvDict = self.DuplicateAndInsertVertices(oldVertices, convDict)
+            convDict.update(partConvDict)
+            yield partConvDict
+
+    def GenerateLocalConversion(self):
+        convDict = {}
+        for bdFaces in self.GenerateLocalBoundaryFaces():
+            # old vertex IDs
+            oldVertices = flattenList(flattenList(bdFaces.values()))
+            # duplicate the vertices, return the duplicates new IDs
+            convDict = self.DuplicateAndInsertVertices(oldVertices, convDict)
+            partConvDict = {}
+            for flist in bdFaces.values():
+                for f in flist:
+                    # only want elements who have had an entire face converted (i.e. actually should recieve a cohesive element)
+                    if sum([v in convDict for v in f]) == self.faceDim:
+                        partConvDict.update({v: convDict[v] for v in f})
+            yield (bdFaces, partConvDict)
+
+    def RemapVerticesOLD(self):
+        '''
+        Identify internal vertices on partition edges, and remap them to new cohesive vertices
+
+        Returns
+        -------
+        np.array
+            list of pre-mapping vertices that underwent mapping
+        np.array
+            new vertex ID's mapped
+
+        '''
+
+        modSourceVertices = []
+        modDestVertices = []
+        allCombs = [list(l) for l in combinations(range(self.cDim), self.faceDim)]
+        for locs, locConv in zip(self.partitions, self.GenerateLocalConversion()):
+            part = np.empty(np.shape(self.cells[locs]), dtype=self.cells.dtype)
+            for j, cell in enumerate(self.cells[locs]):
+                part[j] = np.array([locConv[x] if x in locConv else x for x in cell])
+                modLocs = np.where(cell != part[j])[0]
+                if (modLocs.size > self.faceDim):
+                    # TODO handle the rest of these cases!
+                    if len(locs) == 1:
+                        # single cell partition, we take all faces
+                        modSourceVertices.extend([cell[x] for x in allCombs])
+                        modDestVertices.extend([part[j][x] for x in allCombs])
+                        for x in allCombs:
+                            self.log.debug("Updated vertices %s -> %s" % (l2s(cell[x].tolist()), l2s(part[j][x].tolist())))
+                    else:
+                    # all vertices in the cell were replaced, we must now figure out
+                    # what (if any) face should stay the same
+                        bla = 2
+                elif (modLocs.size == self.faceDim):
+                    modSourceVertices.append(cell[modLocs])
+                    modDestVertices.append(part[j][modLocs])
+                    self.log.debug("Updated vertices %s -> %s" % (l2s(cell[modLocs].tolist()), l2s(part[j][modLocs].tolist())))
+                else:
+                    self.log.debug("No vertices to update")
+            self.cells[locs] = part
+        return modSourceVertices, modDestVertices
 
     def RemapVertices(self):
         '''
@@ -231,24 +300,31 @@ class Mesh(Optsctx):
             new vertex ID's mapped
 
         '''
+
         modSourceVertices = []
         modDestVertices = []
-        for i, locConv in enumerate(self.GenerateLocalConversion()):
-            locs = self.partitions[i]
-            part = np.empty(np.shape(self.cells[locs]), dtype=self.cells.dtype)
-            for j, cell in enumerate(self.cells[locs]):
-                part[j] = np.array([locConv[x] if x in locConv else x for x in cell])
-                modLocs = np.where(cell != part[j])[0]
-                if modLocs.size:
-                    if (modLocs.size == self.faceDim):
+        allCombs = [list(l) for l in combinations(range(self.cDim), self.faceDim)]
+        for part, (bdFaces, locConv) in zip(self.partitions, self.GenerateLocalConversion()):
+            if len(part):
+                partall = np.array([[locConv[x] if x in locConv else x for x in cell] for cell in self.cells[part]])
+                modLocs = partall != self.cells[part]
+                for l, m in zip(modLocs.sum(axis=1), modLocs):
+                    if l > self.faceDim:
+                        if len(part) == 1:
+                            # single cell partition, we take all faces
+                            modSourceVertices.extend([[y[x] for x in allCombs] for y in self.cells[part]])
+                            modDestVertices.extend([[y[x] for x in allCombs] for y in partall])
+
+                    elif l == self.faceDim:
                         modSourceVertices.append(cell[modLocs])
                         modDestVertices.append(part[j][modLocs])
-                        self.log.debug("Updated vertices %s -> %s" % (\
-                                        l2s(cell[modLocs].tolist()),\
-                                        l2s(part[j][modLocs].tolist())))
+                if modLocs.sum():
+                    self.log.debug("Updated vertices %s -> %s" % (l2s(self.cells[part][modLocs]), l2s(partall[modLocs])))
+                    self.cells[part] = partall
                 else:
                     self.log.debug("No vertices to update")
-            self.cells[locs] = part
+            else:
+                self.log.debug("No vertices to update")
         return modSourceVertices, modDestVertices
 
     def CreateElements(self, sourceVertices, mappedVertices):

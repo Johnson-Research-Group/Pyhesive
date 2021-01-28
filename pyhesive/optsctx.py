@@ -21,7 +21,7 @@ class Optsctx:
         integer = "<int>"
         boolean = "<bool>"
         defaultFormat = "abaqus"
-        defaultName = "cgenOutput_{meshname}"
+        defaultName = "pyhesiveOutput_{meshname}"
         parser = argparse.ArgumentParser(description="Insert Cohesive Elements Into Mesh", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         parser.add_argument('-i', '--input', required=cliRequire, metavar=path, help="Specify the input mesh file", dest='meshFileIn')
         parser.add_argument('-b', '--num-partitions', metavar=integer, default=3, type=int, help="Specify the number of partitions to make of the mesh", dest='numPart')

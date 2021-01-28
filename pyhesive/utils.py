@@ -21,8 +21,8 @@ def timeFunc(reps):
             repeat = 10
             r = t.repeat(repeat, reps)
             best, worst = min(r), max(r)
-            print("{reps} loops, best of {repeat}: {best:.3g} seconds per loop, "
-     "worse of {repeat}: {worst:.3g} seconds per loop".format(**vars()))
+            avg = sum(r)/repeat
+            print("{repeat} sets of {reps} loops. AVG: {avg:.3g} usec/loop BEST: {best:.3g} usec/loop WORST: {worst:.3g} usec/loop".format(**vars()))
         return wraps
     return decorator
 
