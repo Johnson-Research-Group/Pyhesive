@@ -9,8 +9,8 @@ from .utils import *
 from .optsctx import Optsctx
 
 import logging, atexit, meshio, pymetis
-from collections import defaultdict
-from itertools import combinations
+from collections import defaultdict, Counter
+from itertools import combinations, accumulate
 from scipy import sparse
 import numpy as np
 
@@ -49,8 +49,8 @@ class Mesh(Optsctx):
         self.coords = mesh.points
         self.cDim = len(self.cells[0])
         self.faceDim = infoDict[self.cType][0]
-        self.log.debug("Cell dimension %d, type %s" % (self.cDim, self.cType))
-        self.log.debug("Face dimension %d" % self.faceDim)
+        self.log.info("Number of cells %d, vertices %d" % (len(self.cells), len(self.coords)))
+        self.log.info("Cell dimension %d, type %s, face dimension %d" % (self.cDim, self.cType, self.faceDim))
         self.adjMat = self.BuildAdjacencyMatrix(self.cells)
         self.cAdj, self.bdCells, self.bdFaces = self.GenerateCellAdjacency(self.adjMat, self.cells, self.faceDim)
         if not self.registered_exit:
@@ -86,7 +86,7 @@ class Mesh(Optsctx):
             for ctype, info in infoDict.items():
                 if info[1] == npts:
                     cohesiveType = ctype
-                    self.log.debug("Generated %d cohesive elements of type '%s'" % (len(self.cohesiveCells), ctype))
+                    self.log.info("Generated %d cohesive elements of type '%s'" % (len(self.cohesiveCells), ctype))
                     break
             if cohesiveType is None:
                 raise RuntimeError("Cohesive type not recognized!")
@@ -94,20 +94,33 @@ class Mesh(Optsctx):
         else:
             self.log.info("Generated 0 cohesive elements")
         meshOut = meshio.Mesh(self.coords, cells)
+        meshOut.remove_orphaned_nodes()
         meshio.write(self.meshFileOut, meshOut, file_format=self.meshFormatOut)
         self.log.info("Wrote mesh to '%s' with format '%s'" % (self.meshFileOut, self.meshFormatOut))
 
     def PartitionMesh(self):
-        self.ncuts, membership = pymetis.part_graph(self.numPart, adjacency=self.cAdj)
-        self.log.info("Number of partitions %d, cuts %d" % (self.numPart, self.ncuts))
-        if (self.ncuts == 0):
-            raise RuntimeError("No cuts were made by partitioner")
-        self.membership = np.array(membership, dtype=np.intp)
-        self.partitions = [np.argwhere(self.membership == x).ravel() for x in range(self.numPart)]
+        if self.numPart < len(self.cells):
+            self.ncuts, membership = pymetis.part_graph(self.numPart, adjacency=self.cAdj)
+            if (self.ncuts == 0):
+                raise RuntimeError("No cuts were made by partitioner")
+            self.membership = np.array(membership, dtype=np.intp)
+            self.partitions = [np.argwhere(self.membership == x).ravel() for x in range(self.numPart)]
+        else:
+            self.ncuts = -1
+            self.membership = np.array([x for x in range(len(self.cells))])
+            self.partitions = [np.array([x]) for x in self.membership]
+        nValid = sum(1 for i in self.partitions if len(i))
+        self.log.info("Number of partitions requested %d, actual %d, average cells/partition %d" % (self.numPart, nValid, len(self.cells)/nValid))
+        partVMap = [np.unique(self.cells[part].ravel()) for part in self.partitions]
+        for vmap in partVMap:
+            try:
+                ctr += Counter(vmap)
+            except UnboundLocalError:
+                ctr = Counter(vmap)
+        self.partVMap = ctr
         partCountSum = sum([len(x) for x in self.partitions])
         if partCountSum != len(self.cells):
-            raise RuntimeError("Partition cell-count summ %d != global number of cells %d" % (partCountSum, len(self.cells)))
-
+            raise RuntimeError("Partition cell-count sum %d != global number of cells %d" % (partCountSum, len(self.cells)))
 
     def GenerateElements(self):
         sourceVerts, mappedVerts = self.RemapVertices()
@@ -152,22 +165,29 @@ class Mesh(Optsctx):
                 odict[i].append(inlist[i])
             return odict
 
-        bdcells = []
         adj = {}
+        bdcells = []
         bdfaces = []
         facesPerCell = len([_ for _ in combinations(range(len(cells[0])), faceDim)])
         for rowindex, row in enumerate(adjMat.tolil(copy=False).data):
-            sharedfaces = [i for i,k in enumerate(row) if k == faceDim]
-            adj[rowindex] = [adjMat.rows[rowindex][j] for j in sharedfaces]
+            neighbors = [i for i,k in enumerate(row) if k == faceDim]
+            adj[rowindex] = [adjMat.rows[rowindex][j] for j in neighbors]
             self.log.debug("cell %d adjacent to %s" % (rowindex, l2s(adj[rowindex])))
-            if (len(sharedfaces) != facesPerCell):
+            if (len(neighbors) != facesPerCell):
+                # the cell does not have a neighbor for every face!
                 self.log.debug("cell %d marked on boundary" % (rowindex))
                 bdcells.append(rowindex)
-                faces = [set(np.intersect1d(cells[rowindex],cells[c],assume_unique=True)) for c in adj[rowindex]]
+                # for all of my neighbors, what faces do we have in common?
+                intFaces = [set(np.intersect1d(cells[rowindex],cells[c],assume_unique=True)) for c in adj[rowindex]]
+                # all possible faces of mine
                 comb = [set(c) for c in combinations(cells[rowindex], faceDim)]
-                bdfaces.append([list(face) for face in comb if face not in faces])
+                bdf = [list(face) for face in comb if face not in intFaces]
+                for f in bdf:
+                    self.log.debug("face %s marked on boundary" % f)
+                bdfaces.append(bdf)
             else:
                 self.log.debug("cell %d marked interior" % (rowindex))
+        self.log.debug("%d interior cells, %d boundary cells, %d boundary faces" % (len(cells)-len(bdcells), len(bdcells), len(bdfaces)))
         return adj, bdcells, bdfaces
 
     def GenerateLocalBoundaryFaces(self):
@@ -185,163 +205,78 @@ class Mesh(Optsctx):
                 bdNodes = [[f for f in c if f not in fl] for c in bdFaces_l]
                 yield dict((i,j) for i,j in enumerate(bdNodes))
 
-    def DuplicateAndInsertVerticesOLD(self, oldVertexList, globalDict = None):
-        try:
-            convertableVertices = [x for x in oldVertexList if x not in globalDict]
-        except TypeError:
-            pass
-        nv = len(self.coords)
-        newVertexList = range(nv, nv+len(convertableVertices))
-        for i,j in zip(convertableVertices, newVertexList):
-            self.log.debug("Duped vertex %d -> %d" % (i, j))
-        newVertexCoords = [self.coords[v] for v in convertableVertices]
-        if len(newVertexCoords):
-            self.coords = np.vstack((self.coords, newVertexCoords))
-        else:
-            self.log.debug("No vertices to duplicate")
-        return dict(zip(convertableVertices, newVertexList))
-
     def DuplicateAndInsertVertices(self, oldVertexList, globalDict):
         try:
-            convertableVertices = [x for x in oldVertexList if x not in globalDict]
+            convertableVertices = [x for x in set(oldVertexList) if x not in globalDict]
         except TypeError:
             pass
-
         lcv = len(convertableVertices)
         if (lcv):
-            nv = len(self.coords)
-            newVertexList = range(nv, nv+lcv)
-            for i,j in zip(convertableVertices, newVertexList):
-                self.log.debug("Duped vertex %d -> %d" % (i, j))
-            newVertexCoords = [self.coords[v] for v in convertableVertices]
-            self.coords = np.vstack((self.coords, newVertexCoords))
-            return dict(zip(convertableVertices, newVertexList))
+            tdict = defaultdict(list)
+            try:
+                ndv = len(self.coords)+len(self.dupCoords)
+            except AttributeError:
+                ndv = len(self.coords)
+            vCounts = [self.partVMap[x]-1 for x in convertableVertices]
+            newVCoords = []
+            for i, acc in zip(convertableVertices, accumulate(vCounts)):
+                assert(acc >= 0)
+                ndvLast = ndv
+                ndv += acc
+                tdict[i] = ([x for x in range(ndvLast, ndv)], [i])
+                newVCoords.extend([self.coords[i] for _ in range(ndvLast, ndv)])
+                self.log.debug("Duped vertex %d -> %s" % (i, l2s(tdict[i][0])))
+            try:
+                 self.dupCoords = np.vstack((self.dupCoords, newVCoords))
+            except AttributeError:
+                self.dupCoords = np.array(newVCoords)
+            return tdict
         else:
             self.log.debug("No vertices to duplicate")
             return {}
 
-
-    def GenerateLocalConversionOLD(self):
-        convDict = {}
-        for partition in self.GenerateLocalBoundaryFaces():
-            # old vertex IDs
-            oldVertices = list({s:None for s in flattenList(partition.values())})
-            # duplicate the vertices, return the duplicates new IDs
-            partConvDict = self.DuplicateAndInsertVertices(oldVertices, convDict)
-            convDict.update(partConvDict)
-            yield partConvDict
-
-    def GenerateLocalConversion(self):
-        convDict = {}
+    def GenerateGlobalConversion(self):
+        globConvDict = {}
         for bdFaces in self.GenerateLocalBoundaryFaces():
             # old vertex IDs
             oldVertices = flattenList(flattenList(bdFaces.values()))
             # duplicate the vertices, return the duplicates new IDs
-            convDict = self.DuplicateAndInsertVertices(oldVertices, convDict)
-            partConvDict = {}
-            for flist in bdFaces.values():
-                for f in flist:
-                    # only want elements who have had an entire face converted (i.e. actually should recieve a cohesive element)
-                    if sum([v in convDict for v in f]) == self.faceDim:
-                        partConvDict.update({v: convDict[v] for v in f})
-            yield (bdFaces, partConvDict)
-
-    def RemapVerticesOLD(self):
-        '''
-        Identify internal vertices on partition edges, and remap them to new cohesive vertices
-
-        Returns
-        -------
-        np.array
-            list of pre-mapping vertices that underwent mapping
-        np.array
-            new vertex ID's mapped
-
-        '''
-
-        modSourceVertices = []
-        modDestVertices = []
-        allCombs = [list(l) for l in combinations(range(self.cDim), self.faceDim)]
-        for locs, locConv in zip(self.partitions, self.GenerateLocalConversion()):
-            part = np.empty(np.shape(self.cells[locs]), dtype=self.cells.dtype)
-            for j, cell in enumerate(self.cells[locs]):
-                part[j] = np.array([locConv[x] if x in locConv else x for x in cell])
-                modLocs = np.where(cell != part[j])[0]
-                if (modLocs.size > self.faceDim):
-                    # TODO handle the rest of these cases!
-                    if len(locs) == 1:
-                        # single cell partition, we take all faces
-                        modSourceVertices.extend([cell[x] for x in allCombs])
-                        modDestVertices.extend([part[j][x] for x in allCombs])
-                        for x in allCombs:
-                            self.log.debug("Updated vertices %s -> %s" % (l2s(cell[x].tolist()), l2s(part[j][x].tolist())))
-                    else:
-                    # all vertices in the cell were replaced, we must now figure out
-                    # what (if any) face should stay the same
-                        bla = 2
-                elif (modLocs.size == self.faceDim):
-                    modSourceVertices.append(cell[modLocs])
-                    modDestVertices.append(part[j][modLocs])
-                    self.log.debug("Updated vertices %s -> %s" % (l2s(cell[modLocs].tolist()), l2s(part[j][modLocs].tolist())))
-                else:
-                    self.log.debug("No vertices to update")
-            self.cells[locs] = part
-        return modSourceVertices, modDestVertices
+            locConvDict = self.DuplicateAndInsertVertices(oldVertices, globConvDict)
+            yield bdFaces, globConvDict
+            globConvDict.update(locConvDict)
 
     def RemapVertices(self):
-        '''
-        Identify internal vertices on partition edges, and remap them to new cohesive vertices
-
-        Returns
-        -------
-        np.array
-            list of pre-mapping vertices that underwent mapping
-        np.array
-            new vertex ID's mapped
-
-        '''
-
         modSourceVertices = []
         modDestVertices = []
-        allCombs = [list(l) for l in combinations(range(self.cDim), self.faceDim)]
-        for part, (bdFaces, locConv) in zip(self.partitions, self.GenerateLocalConversion()):
-            if len(part):
-                partall = np.array([[locConv[x] if x in locConv else x for x in cell] for cell in self.cells[part]])
-                modLocs = partall != self.cells[part]
-                for l, m in zip(modLocs.sum(axis=1), modLocs):
-                    if l > self.faceDim:
-                        if len(part) == 1:
-                            # single cell partition, we take all faces
-                            modSourceVertices.extend([[y[x] for x in allCombs] for y in self.cells[part]])
-                            modDestVertices.extend([[y[x] for x in allCombs] for y in partall])
-
-                    elif l == self.faceDim:
-                        modSourceVertices.append(cell[modLocs])
-                        modDestVertices.append(part[j][modLocs])
-                if modLocs.sum():
-                    self.log.debug("Updated vertices %s -> %s" % (l2s(self.cells[part][modLocs]), l2s(partall[modLocs])))
-                    self.cells[part] = partall
-                else:
-                    self.log.debug("No vertices to update")
-            else:
+        for part, (bdFaces, globConv) in zip(self.partitions, self.GenerateGlobalConversion()):
+            partConv = np.array([[globConv[x][0][0] if x in globConv else x for x in cell] for cell in self.cells[part]])
+            try:
+                self.cells[part] = partConv
+            except ValueError:
                 self.log.debug("No vertices to update")
+                continue
+            bdf = flattenList(bdFaces.values())
+            alts = [[globConv[v][0][0] if v in globConv else v for v in f] for f in bdf]
+            for a, b in zip(alts, bdf):
+                diffs = sum(1 for i, j in zip(a, b) if i != j)
+                if diffs == self.faceDim:
+                    modSourceVertices.append([globConv[x][1][0] for x in b])
+                    modDestVertices.append(a)
+                    self.log.debug("Updated face %s -> %s" % (l2s(b), l2s(a)))
+                else:
+                    self.log.debug("Not enough diff (%d)" % diffs)
+            fs = set(flattenList(bdf))
+            vConv = [x for x in fs if x in globConv]
+            for v in vConv:
+                self.log.debug("Updated previous mapping %d: %d -> %d" % (v,globConv[v][1][0],globConv[v][0][0]))
+                globConv[v][1][0] = globConv[v][0].pop()
         return modSourceVertices, modDestVertices
 
     def CreateElements(self, sourceVertices, mappedVertices):
-        '''
-        Parameters
-        ----------
-        sourceVertices : np.array
-            list of face vertices pre-mapping operation. Ordered such that normal points outward from cell centroid
-        mappedVertices : np.array
-            mapped (or duplicated) vertices, each entry corresponds to sourceVertices
-        '''
-        def l2s(inlist):
-            return ', '.join(map(str, inlist))
-
         assert(len(sourceVertices) == len(mappedVertices))
         newElems = []
         for source, dest in zip(sourceVertices, mappedVertices):
             newElems.append(np.hstack((dest,source)))
             self.log.debug("Created new cohesive element %s" %(l2s(newElems[-1])))
+        self.coords = np.vstack((self.coords, self.dupCoords))
         self.cohesiveCells = np.array(newElems)
