@@ -3,21 +3,38 @@
 
 To get a local copy up and running follow these simple steps.
 
-### Prerequisites
-
-This is an example of how to list things you need to use the software and how to install them.
-* npm
-  ```sh
-  npm install npm@latest -g
-  ```
-
 ### Installation
 
-1. Clone the repo
+* Install via pip
    ```sh
-   git clone https://github.com/github_username/repo_name.git
+   pip install pyhesive
    ```
-2. Install NPM packages
+
+* Clone the repo
    ```sh
-   npm install
+   git clone https://gitlab.com/Jfaibussowitsch/pyhesive.git
    ```
+
+### Example Usage
+
+* [RECOMMENDED] Command line script
+  ```sh
+  pyhesive-insert -i /path/to/mesh/file
+  ```
+  Additional commmand line arguments are listed via
+  ```sh
+  pyhesive-insert --help
+  ```
+
+* Python module import
+  ```python
+  import pyhesive
+
+  pyhesMesh = pyhesive.Mesh(mesh) # mesh created with meshio
+  pyhesMesh.PartitionMesh()
+  pyhesMesh.GenerateElements()
+  pyhesMesh,WriteMesh()
+  ```
+
+
+

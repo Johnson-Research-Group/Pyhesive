@@ -22,15 +22,15 @@ class Optsctx:
         boolean = "<bool>"
         defaultFormat = "abaqus"
         defaultName = "pyhesiveOutput_{meshname}"
-        parser = argparse.ArgumentParser(description="Insert Cohesive Elements Into Mesh", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        parser.add_argument('-i', '--input', required=cliRequire, metavar=path, help="Specify the input mesh file", dest='meshFileIn')
-        parser.add_argument('-b', '--num-partitions', metavar=integer, default=3, type=int, help="Specify the number of partitions to make of the mesh", dest='numPart')
-        parser.add_argument('-o', '--output', nargs='?', const=defaultName+"."+defaultFormat, default=defaultName+"."+defaultFormat, metavar=path, help='Specify the output mesh file', dest='meshFileOut')
-        parser.add_argument('-fi', '--input-format', metavar=string, help='Specify the input mesh file format', dest='meshFormatIn')
-        parser.add_argument('-fo', '--output-format', nargs='?', const=defaultFormat,  default=defaultFormat, metavar=string, help='Specify the output mesh file format', dest='meshFormatOut')
-        parser.add_argument('-l', '--log-file', nargs='?', default=sys.stdout.name, metavar=path, help='Log output to file instead of STDOUT', dest='stream')
-        parser.add_argument('-v', '--verbose', default=1, action='count', help='Increase verbosity of logging statements, default no logging', dest='verbosity')
-        parser.add_argument('-p', '--performance', default=False, help='Profile the code during creation', dest='perf')
+        parser = argparse.ArgumentParser(description="Insert Cohesive Elements Into Arbitrary Finite Element Mesh", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        parser.add_argument('-i', '--input', required=cliRequire, metavar=path, help="specify the input mesh file", dest='meshFileIn')
+        parser.add_argument('-b', '--num-partitions', metavar=integer, default=3, type=int, help="specify the number of partitions to make of the mesh", dest='numPart')
+        parser.add_argument('-o', '--output', nargs='?', const=defaultName+"."+defaultFormat, default=defaultName+"."+defaultFormat, metavar=path, help='specify the output mesh file', dest='meshFileOut')
+        parser.add_argument('-fi', '--input-format', metavar=string, help='specify the input mesh file format, defaults to file extension', dest='meshFormatIn')
+        parser.add_argument('-fo', '--output-format', nargs='?', const=defaultFormat,  default=defaultFormat, metavar=string, help='specify the output mesh file format', dest='meshFormatOut')
+        parser.add_argument('-l', '--log-file', nargs='?', default=sys.stdout.name, metavar=path, help='log output to file instead of STDOUT', dest='stream')
+        parser.add_argument('-v', '--verbose', default=1, action='count', help='increase verbosity of logging statements, default no logging', dest='verbosity')
+        parser.add_argument('-p', '--profile', default=False, metavar=boolean, help='Profile the code', dest='perf')
         parser.parse_args(namespace=self)
         if self.meshFileIn is not None:
             _, filen = os.path.split(self.meshFileIn)

@@ -1,0 +1,19 @@
+#! /usr/bin/env python3
+
+def main():
+    try:
+        import pyhesive
+    except ModuleNotFoundError:
+        import sys, os
+        # silly pythonpath finagling in case someone runs this from cloning the git repo
+        # rather than installing it as a package
+        sys.path.append(os.path.join(os.getcwd(), ".."))
+        import pyhesive
+
+    with pyhesive.Mesh() as msh:
+        msh.PartitionMesh()
+        msh.GenerateElements()
+        msh.WriteMesh()
+
+if __name__ == "__main__":
+    main()
