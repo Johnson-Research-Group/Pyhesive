@@ -5,12 +5,12 @@ Created on Mon Nov  9 17:44:24 2020
 
 @author: jacobfaibussowitsch
 """
-from .utils import *
-from .optsctx import Optsctx
+from ._utils import *
+from ._optsctx import Optsctx
 
 import logging, atexit, meshio, pymetis
 from collections import defaultdict, Counter
-from itertools import combinations, accumulate
+from itertools import combinations, accumulate, count
 from scipy import sparse
 import numpy as np
 
@@ -69,6 +69,8 @@ class Mesh(Optsctx):
 
     def Finalize(self):
         if hasattr(self, 'log'):
+            if self.perf:
+                self.log.info("Wrote profile output to %s" % (self.perfLog))
             handlers = self.log.handlers[:]
             for handler in handlers:
                 handler.flush()
@@ -76,6 +78,8 @@ class Mesh(Optsctx):
                 self.log.removeHandler(handler)
         atexit.unregister(self.Finalize)
         self.registered_exit = False
+        if self.perf:
+            finalizeProfile(self.perfLog)
         return
 
     def WriteMesh(self):
@@ -159,32 +163,27 @@ class Mesh(Optsctx):
             return c2c
 
     def GenerateCellAdjacency(self, adjMat, cells, faceDim):
-        def list2dict(inlist):
-            odict = defaultdict(list)
-            for i in range(len(inlist)):
-                odict[i].append(inlist[i])
-            return odict
-
         adj = {}
         bdcells = []
         bdfaces = []
         facesPerCell = len([_ for _ in combinations(range(len(cells[0])), faceDim)])
-        for rowindex, row in enumerate(adjMat.tolil(copy=False).data):
-            neighbors = [i for i,k in enumerate(row) if k == faceDim]
+        for rowindex, row in enumerate(adjMat.data):
+            neighbors = (i for i,k in enumerate(row) if k == faceDim)
             adj[rowindex] = [adjMat.rows[rowindex][j] for j in neighbors]
-            self.log.debug("cell %d adjacent to %s" % (rowindex, l2s(adj[rowindex])))
-            if (len(neighbors) != facesPerCell):
+            self.log.debug("cell %d adjacent to %s" % (rowindex, adj[rowindex]))
+            if (len(adj[rowindex]) != facesPerCell):
                 # the cell does not have a neighbor for every face!
                 self.log.debug("cell %d marked on boundary" % (rowindex))
                 bdcells.append(rowindex)
                 # for all of my neighbors, what faces do we have in common?
-                intFaces = [set(np.intersect1d(cells[rowindex],cells[c],assume_unique=True)) for c in adj[rowindex]]
+                intFaces = [set(cells[rowindex]).intersection(cells[c]) for c in adj[rowindex]]
                 # all possible faces of mine
-                comb = [set(c) for c in combinations(cells[rowindex], faceDim)]
-                bdf = [list(face) for face in comb if face not in intFaces]
-                for f in bdf:
-                    self.log.debug("face %s marked on boundary" % f)
+                comb = list(map(set, combinations(cells[rowindex], faceDim)))
+                # THIS MAY VERY WELL BE COMPLETELY BROKEN
+                # I currently just take a set, __completely throwing out any ordering information
+                bdf = [face for face in comb if face not in intFaces]
                 bdfaces.append(bdf)
+                [self.log.debug("face %s marked on boundary" % f) for f in bdf]
             else:
                 self.log.debug("cell %d marked interior" % (rowindex))
         self.log.debug("%d interior cells, %d boundary cells, %d boundary faces" % (len(cells)-len(bdcells), len(bdcells), len(bdfaces)))
@@ -194,24 +193,23 @@ class Mesh(Optsctx):
         # Extract the partition
         fl = flattenList(self.bdFaces)
         for i, part in enumerate(self.partitions):
-            nc = len(part)
-            if not nc:
+            if not len(part):
                 self.log.debug("Partition %d contains no cells" % i)
                 yield dict()
             else:
-                self.log.debug("Partition %d contains (%d) cells %s" % (i, nc, l2s(part)))
-                subMat = self.adjMat[np.ix_(part, part)]
+                self.log.debug("Partition %d contains (%d) cells %s" % (i, len(part), part))
+                rows = sparse.csc_matrix(self.adjMat[part])
+                subMat = sparse.lil_matrix(rows[:, part])
                 _, _, bdFaces_l = self.GenerateCellAdjacency(subMat, self.cells[part], self.faceDim)
                 bdNodes = [[f for f in c if f not in fl] for c in bdFaces_l]
                 yield dict((i,j) for i,j in enumerate(bdNodes))
 
     def DuplicateAndInsertVertices(self, oldVertexList, globalDict):
         try:
-            convertableVertices = [x for x in set(oldVertexList) if x not in globalDict]
+            convertableVertices = [x for x in oldVertexList if x not in globalDict]
         except TypeError:
             pass
-        lcv = len(convertableVertices)
-        if (lcv):
+        if len(convertableVertices):
             tdict = defaultdict(list)
             try:
                 ndv = len(self.coords)+len(self.dupCoords)
@@ -220,12 +218,11 @@ class Mesh(Optsctx):
             vCounts = [self.partVMap[x]-1 for x in convertableVertices]
             newVCoords = []
             for i, acc in zip(convertableVertices, accumulate(vCounts)):
-                assert(acc >= 0)
                 ndvLast = ndv
                 ndv += acc
-                tdict[i] = ([x for x in range(ndvLast, ndv)], [i])
+                tdict[i] = (list(range(ndvLast, ndv)), [i])
                 newVCoords.extend([self.coords[i] for _ in range(ndvLast, ndv)])
-                self.log.debug("Duped vertex %d -> %s" % (i, l2s(tdict[i][0])))
+                self.log.debug("Duped vertex %d -> %s" % (i, tdict[i][0]))
             try:
                  self.dupCoords = np.vstack((self.dupCoords, newVCoords))
             except AttributeError:
@@ -239,7 +236,7 @@ class Mesh(Optsctx):
         globConvDict = {}
         for bdFaces in self.GenerateLocalBoundaryFaces():
             # old vertex IDs
-            oldVertices = flattenList(flattenList(bdFaces.values()))
+            oldVertices = set(flattenList(flattenList(bdFaces.values())))
             # duplicate the vertices, return the duplicates new IDs
             locConvDict = self.DuplicateAndInsertVertices(oldVertices, globConvDict)
             yield bdFaces, globConvDict

@@ -9,6 +9,7 @@ import sys, atexit, argparse, io, os
 
 class Optsctx:
     stream = sys.stdout.name
+    perfLog = "perf_{meshname}.prof"
     vLevel = 50
     registered_exit = False
 
@@ -30,14 +31,16 @@ class Optsctx:
         parser.add_argument('-fo', '--output-format', nargs='?', const=defaultFormat,  default=defaultFormat, metavar=string, help='specify the output mesh file format', dest='meshFormatOut')
         parser.add_argument('-l', '--log-file', nargs='?', default=sys.stdout.name, metavar=path, help='log output to file instead of STDOUT', dest='stream')
         parser.add_argument('-v', '--verbose', default=1, action='count', help='increase verbosity of logging statements, default no logging', dest='verbosity')
-        parser.add_argument('-p', '--profile', default=False, metavar=boolean, help='Profile the code', dest='perf')
+        parser.add_argument('-p', '--profile', help='Profile the code', dest='perf', action='store_true')
+        parser.set_defaults(perf=False)
         parser.parse_args(namespace=self)
         if self.meshFileIn is not None:
             _, filen = os.path.split(self.meshFileIn)
             filename = filen.split('.')[0]
         else:
-            fiename = "mesh"
+            filename = "mesh"
         self.meshFileOut = self.meshFileOut.format(meshname=filename)
+        self.perfLog = self.perfLog.format(meshname=filename)
         if self.stream is not sys.stdout.name:
             self.stream = open(self.stream[0], 'w')
         else:

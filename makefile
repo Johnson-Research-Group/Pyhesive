@@ -28,6 +28,8 @@ test-install:
 	$(PYTHON3) -m pip install --index-url https://test.pypi.org/simple/ --no-deps --no-cache-dir pyhesive && \
 	$(PYTHON3) -m pip install --no-cache-dir pyhesive && \
 	$(PYTHON3) $(TESTDIR)/testPackage.py
+	@. $(LOCDIR)venv/bin/activate && \
+	cd $(LOCDIR)bin && pyhesive-insert --help && cd -
 	@echo "==================================================================="
 	@echo "                   Installing From PyPi"
 	@echo "==================================================================="
