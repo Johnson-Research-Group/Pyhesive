@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="pyhesive", # Replace with your own username
-    version="0.1.6.2",
+    version="0.1.7.0",
     author="Jacob Faibussowitsch",
     author_email="jacob.fai@gmail.com",
     description="Insert cohesive elements into any mesh",

@@ -7,7 +7,7 @@ VENV_DIRS        = venv
 PYPACKAGE_DIRS  := $(addprefix $(LOCDIR), $(PACKAGE_DIRS))
 PYVENV_DIRS     := $(addprefix $(LOCDIR), $(VENV_DIRS))
 
-.PHONY: clean clean-package clean-venv $(PYPACKAGE_DIRS) $(PYVENV_DIRS)
+.PHONY: test clean clean-package clean-venv $(PYPACKAGE_DIRS) $(PYVENV_DIRS)
 
 package:
 	-@$(PYTHON3) setup.py sdist bdist_wheel
@@ -40,6 +40,12 @@ test-install:
 	@echo "          All Install Tests Completed Successfully"
 	@echo "==================================================================="
 
+test: test-install
+	@. $(LOCDIR)venv/bin/activate && \
+	@$(PYTHON3) $(TESTDIR)/testMesh.py
+	@echo "==================================================================="
+	@echo "               All Tests Completed Successfully"
+	@echo "==================================================================="
 
 clean-package: $(PYPACKAGE_DIRS)
 
