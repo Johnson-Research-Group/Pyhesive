@@ -5,7 +5,8 @@ Created on Mon Jan 25 15:14:00 2021
 
 @author: jacobfaibussowitsch
 """
-import timeit, pstats, cProfile, functools, io, atexit
+import timeit, pstats, cProfile, functools, io
+from scipy import sparse
 
 strm = io.StringIO()
 perfFile = None
@@ -48,4 +49,11 @@ def l2s(inlist):
     return ', '.join(map(str, inlist))
 
 def flattenList(inlist):
-        return [item for sublist in inlist for item in sublist]
+    return [item for sublist in inlist for item in sublist]
+
+def storeMatrix(filename, mat):
+    sparse.save_npz(filename, mat, compressed=True)
+
+def loadMatrix(filename, format=None):
+    mat = sparse.load_npz(filename)
+    return mat.asformat(format, copy=False)
