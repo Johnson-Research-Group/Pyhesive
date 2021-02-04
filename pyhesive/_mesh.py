@@ -96,10 +96,15 @@ class Mesh:
         meshio.write(meshFileOut, meshOut, file_format=meshFormatOut)
         self.log.info("Wrote mesh to '%s' with format '%s'" % (meshFileOut, meshFormatOut))
 
-    def PartitionMesh(self, numPart):
-        if numPart < len(self.cells):
+    def PartitionMesh(self, numPart=-1):
+        if numPart == -1:
+            numPart = len(self.cells)
+        if numPart == 1:
+            self.partitions = []
+            return
+        elif numPart < len(self.cells):
             self.ncuts, membership = pymetis.part_graph(numPart, adjacency=self.cAdj)
-            if (self.ncuts == 0):
+            if self.ncuts == 0:
                 raise RuntimeError("No cuts were made by partitioner")
             self.membership = np.array(membership, dtype=np.intp)
             self.partitions = [np.argwhere(self.membership == x).ravel() for x in range(numPart)]
@@ -121,8 +126,9 @@ class Mesh:
             raise RuntimeError("Partition cell-count sum %d != global number of cells %d" % (partCountSum, len(self.cells)))
 
     def GenerateElements(self):
-        sourceVerts, mappedVerts = self.RemapVertices()
-        self.CreateElements(sourceVerts, mappedVerts)
+        if len(self.partitions):
+            sourceVerts, mappedVerts = self.RemapVertices()
+            self.CreateElements(sourceVerts, mappedVerts)
 
     def BuildAdjacencyMatrix(self, cells, format='lil', v2v=False):
         def matsize(a):
@@ -144,14 +150,14 @@ class Mesh:
             element_ids.ravel(),)))
         v2c = v2c.tocsr(copy=False)
         c2c = v2c.T @ v2c
-        self.log.info("c2c mat size %d bytes" % matsize(c2c))
+        self.log.debug("c2c mat size %g kB" % (matsize(c2c)/(1024**2)))
         c2c = c2c.asformat(format, copy=False)
-        self.log.info("c2c mat size after compression %d bytes" % matsize(c2c))
+        self.log.debug("c2c mat size after compression %g kB" % (matsize(c2c)/(1024**2)))
         if v2v:
             v2v = v2c @ v2c.T
-            self.log.info("v2v mat size %d bytes" % matsize(v2v))
+            self.log.debug("v2v mat size %d bytes" % matsize(v2v))
             v2v = v2v.asformat(format, copy=False)
-            self.log.info("v2v mat size after compression %d bytes" % matsize(v2v))
+            self.log.debug("v2v mat size after compression %d bytes" % matsize(v2v))
             return c2c, v2v
         else:
             return c2c
@@ -166,9 +172,9 @@ class Mesh:
             adj[rowindex] = [adjMat.rows[rowindex][j] for j in neighbors]
             self.log.debug("cell %d adjacent to %s" % (rowindex, adj[rowindex]))
             if len(adj[rowindex]) != facesPerCell:
-                # the cell does not have a neighbor for every face!
-                self.log.debug("cell %d marked on boundary" % (rowindex))
                 if fullClosure:
+                    # the cell does not have a neighbor for every face!
+                    self.log.debug("cell %d marked on boundary" % (rowindex))
                     bdcells.append(rowindex)
                 # for all of my neighbors, what faces do we have in common?
                 intFaces = [set(cells[rowindex]).intersection(cells[c]) for c in adj[rowindex]]
@@ -176,9 +182,10 @@ class Mesh:
                 comb = list(map(set, combinations(cells[rowindex], faceDim)))
                 # THIS MAY VERY WELL BE COMPLETELY BROKEN
                 # I currently just take a set, __completely throwing out any ordering information
-                bdf = [list(face) for face in comb if face not in intFaces]
+                bdf = [tuple(face) for face in comb if face not in intFaces]
                 bdfaces.append(bdf)
-                [self.log.debug("face %s marked on boundary" % f) for f in bdf]
+                if self.log.isEnabledFor(logging.DEBUG):
+                    [self.log.debug("face %s marked on boundary" % (f,)) for f in bdf]
             else:
                 self.log.debug("cell %d marked interior" % (rowindex))
         self.log.debug("%d interior cells, %d boundary cells, %d boundary faces" % (len(cells)-len(bdcells), len(bdcells), len(bdfaces)))
@@ -188,32 +195,31 @@ class Mesh:
             return adj, bdfaces
 
     def GenerateLocalBoundaryFaces(self):
-        fl = list(map(set, flattenList(self.bdFaces)))
+        flt = set(flatten(self.bdFaces))
         # Extract the partition
         for i, part in enumerate(self.partitions):
             if not len(part):
                 self.log.debug("Partition %d contains no cells" % i)
-                yield dict()
+                yield {}
             else:
-                self.log.debug("Partition %d contains (%d) cells %s" % (i, len(part), part))
-                rows = self.adjMat[part].tocsc(copy=False)
-                subMat = rows[:, part].tolil(copy=False)
-                _, locBdFaces = self.ComputeClosure(subMat, self.cells[part], self.faceDim, fullClosure=False)
-                bdNodes = [[f for f in c if set(f) not in fl] for c in locBdFaces]
+                if self.log.isEnabledFor(logging.DEBUG):
+                    self.log.debug("Partition %d contains (%d) cells %s" % (i, len(part), part))
+                _, locBdFaces = self.ComputeClosure(self.adjMat[part, :][:, part], self.cells[part], self.faceDim, fullClosure=False)
+                bdNodes = [set(c)-flt for c in locBdFaces]
                 yield dict((i,j) for i,j in enumerate(bdNodes))
 
-    def DuplicateVertices(self, oldVertexList, globalDict):
+    def DuplicateVertices(self, oldVertexList, globalDict, coords, partVMap):
         try:
-            convertableVertices = [x for x in oldVertexList if x not in globalDict]
+            convertableVertices = tuple(x for x in oldVertexList if x not in globalDict)
         except TypeError:
             pass
         if len(convertableVertices):
             try:
-                ndv = len(self.coords)+len(self.dupCoords)
+                ndv = len(coords)+len(self.dupCoords)
             except AttributeError:
                 # self.dupCoords doesn't exist yet
-                ndv = len(self.coords)
-            vCounts = [self.partVMap[x]-1 for x in convertableVertices]
+                ndv = len(coords)
+            vCounts = [partVMap[x]-1 for x in convertableVertices]
             newVCoords = []
             tdict = dict()
             for v, cnt in zip(convertableVertices, vCounts):
@@ -223,10 +229,10 @@ class Mesh:
                 # otherwise the routine generating local interior bounndaries is buggy
                 assert(ndv > ndvLast)
                 tdict[v] = (deque(range(ndvLast, ndv)), [v])
-                newVCoords.extend([self.coords[v] for _ in range(cnt)])
+                newVCoords.extend([coords[v] for _ in range(cnt)])
                 self.log.debug("Duped vertex %d -> %s" % (v, tdict[v][0]))
             try:
-                 self.dupCoords = np.vstack((self.dupCoords, newVCoords))
+                self.dupCoords = np.vstack((self.dupCoords, newVCoords))
             except AttributeError:
                 # self.dupCoords doesn't exist yet
                 self.dupCoords = np.array(newVCoords)
@@ -238,9 +244,9 @@ class Mesh:
     def GenerateGlobalConversion(self, globConvDict):
         for bdFaces in self.GenerateLocalBoundaryFaces():
             # old vertex IDs
-            oldVertices = set(flattenList(flattenList(bdFaces.values())))
+            oldVertices = set(flatten(flatten(bdFaces.values())))
             # duplicate the vertices, return the duplicates new IDs
-            locConvDict = self.DuplicateVertices(oldVertices, globConvDict)
+            locConvDict = self.DuplicateVertices(oldVertices, globConvDict, self.coords, self.partVMap)
             yield bdFaces, globConvDict
             globConvDict.update(locConvDict)
 
@@ -255,15 +261,15 @@ class Mesh:
             except ValueError:
                 self.log.debug("No vertices to update")
                 continue
-            bdf = flattenList(bdFaces.values())
-            alts = [[globConv[v][0][0] if v in globConv else v for v in f] for f in bdf]
+            bdf = flatten(bdFaces.values())
+            alts = [tuple(globConv[v][0][0] if v in globConv else v for v in f) for f in bdf]
             for a, b in zip(alts, bdf):
                 diffs = sum(1 for i, j in zip(a, b) if i != j)
                 if diffs == self.faceDim:
-                    modSourceVertices.append([globConv[x][1][0] for x in b])
+                    modSourceVertices.append(tuple(globConv[x][1][0] for x in b))
                     modDestVertices.append(a)
                     self.log.debug("Updated face %s -> %s" % (b, a))
-            fs = set(flattenList(bdf))
+            fs = set(flatten(bdf))
             vConv = (x for x in fs if x in globConv)
             for v in vConv:
                 self.log.debug("Updated previous mapping %d: %d -> %d" % (v,globConv[v][1][0],globConv[v][0][0]))
@@ -272,9 +278,7 @@ class Mesh:
 
     def CreateElements(self, sourceVertices, mappedVertices):
         assert(len(sourceVertices) == len(mappedVertices))
-        newElems = []
-        for source, dest in zip(sourceVertices, mappedVertices):
-            newElems.append(np.hstack((dest,source)))
-            self.log.debug("Created new cohesive element %s" % (newElems[-1]))
+        self.cohesiveCells = np.hstack((mappedVertices, sourceVertices))
+        if self.log.isEnabledFor(logging.DEBUG):
+            [self.log.debug("Created new cohesive element %s" % (e)) for e in self.cohesiveCells]
         self.coords = np.vstack((self.coords, self.dupCoords))
-        self.cohesiveCells = np.array(newElems)

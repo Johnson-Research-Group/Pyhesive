@@ -1,4 +1,9 @@
-import setuptools
+import setuptools, unittest
+
+def findTests():
+    testLoader = unittest.TestLoader()
+    testSuite = testLoader.discover('test', pattern='test_*.py')
+    return test_suite
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
@@ -43,4 +48,5 @@ setuptools.setup(
         'pymetis'
     ],
     python_requires='>=3.6',
+    test_suite="test"
 )

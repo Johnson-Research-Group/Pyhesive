@@ -48,7 +48,7 @@ def profileFunc(func):
 def l2s(inlist):
     return ', '.join(map(str, inlist))
 
-def flattenList(inlist):
+def flatten(inlist):
     return [item for sublist in inlist for item in sublist]
 
 def storeMatrix(filename, mat):

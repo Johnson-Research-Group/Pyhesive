@@ -7,10 +7,15 @@ VENV_DIRS        = venv
 PYPACKAGE_DIRS  := $(addprefix $(LOCDIR), $(PACKAGE_DIRS))
 PYVENV_DIRS     := $(addprefix $(LOCDIR), $(VENV_DIRS))
 
-.PHONY: test clean clean-package clean-venv $(PYPACKAGE_DIRS) $(PYVENV_DIRS)
+.PHONY: test clean clean-package clean-venv $(PYPACKAGE_DIRS) $(PYVENV_DIRS) profile
+
+profile:
+	-@cd $(LOCDIR)bin && \
+	$(PYTHON3) -m cProfile -o pyhesive.prof ./pyhesive-insert $(PROFILE_ARGS) && \
+	snakeviz pyhesive.prof
 
 package:
-	-@$(PYTHON3) setup.py sdist bdist_wheel
+	@$(PYTHON3) setup.py sdist bdist_wheel
 
 test-upload: package
 	-@$(PYTHON3) -m twine upload --repository testpypi dist/*
@@ -25,16 +30,16 @@ test-install:
 	@echo "==================================================================="
 	@. $(LOCDIR)venv/bin/activate && \
 	pip3 install --upgrade pip setuptools && \
-	$(PYTHON3) -m pip install --index-url https://test.pypi.org/simple/ --no-deps --no-cache-dir pyhesive && \
-	$(PYTHON3) -m pip install --no-cache-dir pyhesive && \
+	$(PYTHON3) -m pip install --index-url https://test.pypi.org/simple/ --no-deps --upgrade pyhesive && \
+	$(PYTHON3) -m pip install pyhesive && \
 	$(PYTHON3) $(TESTDIR)/testPackage.py
 	@. $(LOCDIR)venv/bin/activate && \
-	cd $(LOCDIR)bin && pyhesive-insert --help && cd -
+	cd $(LOCDIR)bin && pyhesive-insert --help > /dev/null && cd - >/dev/null
 	@echo "==================================================================="
 	@echo "                   Installing From PyPi"
 	@echo "==================================================================="
 	@. $(LOCDIR)venv/bin/activate && \
-	$(PYTHON3) -m pip install --no-cache-dir pyhesive && \
+	$(PYTHON3) -m pip install --upgrade pyhesive && \
 	$(PYTHON3) $(TESTDIR)/testPackage.py
 	@echo "==================================================================="
 	@echo "          All Install Tests Completed Successfully"
@@ -42,7 +47,7 @@ test-install:
 
 test: test-install
 	@. $(LOCDIR)venv/bin/activate && \
-	@$(PYTHON3) $(TESTDIR)/testMesh.py
+	cd $(TESTDIR) && $(PYTHON3) ./testMesh.py
 	@echo "==================================================================="
 	@echo "               All Tests Completed Successfully"
 	@echo "==================================================================="

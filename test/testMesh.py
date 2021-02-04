@@ -5,7 +5,7 @@ Created on Tue Feb  2 10:17:49 2021
 
 @author: jacobfaibussowitsch
 """
-import os, unittest, pyhesive, meshio
+import os, unittest, meshio, pyhesive
 from unittest.mock import patch
 import numpy as np
 
@@ -62,6 +62,21 @@ class tMesh(unittest.TestCase):
         smallCubeAdjMat = pyhesive._utils.loadMatrix(smallCubeAdjMatFile, format='lil')
         with pyhesive.Mesh.fromFile(smallCubeMeshFile) as pyh:
             testBase(self, smallCubeAdjMat, pyh)
+
+    def test_Partition(self):
+        def testBase (obj, file, partList):
+            with pyhesive.Mesh.fromFile(file) as pyh:
+                for i in partList:
+                    with obj.subTest(i=i):
+                        if i == 1:
+                            with obj.assertRaises(RuntimeError):
+                                pyh.PartitionMesh(i)
+                        else:
+                            pyh.PartitionMesh(i)
+                            obj.assertEqual(len(pyh.partitions), i)
+
+        testBase(self, mediumCubeMeshFile, [1,10,20,30,40,50])
+
 
 if __name__ == '__main__':
     unittest.main()

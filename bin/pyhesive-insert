@@ -3,7 +3,9 @@
 """
 @author: jacobfaibussowitsch
 """
-import argparse, sys, os
+import argparse
+import sys
+import os
 try:
     import pyhesive
 except ModuleNotFoundError:
@@ -12,23 +14,23 @@ except ModuleNotFoundError:
     sys.path.append(os.path.join(os.getcwd(), ".."))
     import pyhesive
 
+
 def parseArgs(argv):
     path = "<path>"
     string = "<string>"
     integer = "<int>"
-    boolean = "<bool>"
     defaultFormat = "abaqus"
     defaultName = "pyhesiveOutput_{meshname}"
     parser = argparse.ArgumentParser(description="Insert Cohesive Elements Into Arbitrary Finite Element Mesh", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-i', '--input', required=True, metavar=path, help="specify the input mesh file", dest='meshFileIn')
-    parser.add_argument('-b', '--num-partitions', metavar=integer, default=3, type=int, help="specify the number of partitions to make of the mesh", dest='numPart')
+    parser.add_argument('-b', '--num-partitions', metavar=integer, default=3, type=int, help="specify the number of partitions to make of the mesh, use -1 to make as many partitions as there are cells", dest='numPart')
     parser.add_argument('-o', '--output', nargs='?', const=defaultName+"."+defaultFormat, default=defaultName+"."+defaultFormat, metavar=path, help='specify the output mesh file', dest='meshFileOut')
     parser.add_argument('-fi', '--input-format', metavar=string, help='specify the input mesh file format, defaults to file extension', dest='meshFormatIn')
     parser.add_argument('-fo', '--output-format', nargs='?', const=defaultFormat,  default=defaultFormat, metavar=string, help='specify the output mesh file format', dest='meshFormatOut')
     parser.add_argument('-l', '--log-file', nargs='?', default=sys.stdout.name, metavar=path, help='log output to file instead of STDOUT', dest='stream')
     parser.add_argument('-v', '--verbose', default=1, action='count', help='increase verbosity of logging statements, default no logging', dest='verbosity')
-    parser.add_argument('-p', '--prune', help='prune dangling vertices', dest='prune', action='store_true')
-    parser.set_defaults(prune=False, vLevel=50)
+    parser.add_argument( '-p', '--prune', help='prune dangling vertices', dest='prune', action='store_true')
+    parser.set_defaults(prune=False, vLevel=40)
     args = parser.parse_args(args=argv)
     if args.meshFileIn is not None:
         _, filen = os.path.split(args.meshFileIn)
@@ -45,12 +47,14 @@ def parseArgs(argv):
             args.vLevel -= 10
     return args
 
+
 def main(argv=None):
     args = parseArgs(argv)
     with pyhesive.Mesh.fromFile(args.meshFileIn, formatIn=args.meshFormatIn, verbosity=args.vLevel, stream=args.stream) as pyh:
         pyh.PartitionMesh(args.numPart)
         pyh.GenerateElements()
         pyh.WriteMesh(args.meshFileOut, args.meshFormatOut, args.prune)
+
 
 if __name__ == "__main__":
     main()
