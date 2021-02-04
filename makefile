@@ -63,4 +63,4 @@ $(PYVENV_DIRS):
 	-${RM} -r $@
 
 clean: clean-package clean-venv
-	-${RM} -r __pycache__
+	-${RM} -r $(LOCDIR)pyhesive/__pycache__

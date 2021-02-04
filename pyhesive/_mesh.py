@@ -83,7 +83,7 @@ class Mesh:
             for ctype, info in infoDict.items():
                 if info[1] == npts:
                     cohesiveType = ctype
-                    self.log.info("Generated %d cohesive elements of type '%s'" % (len(self.cohesiveCells), ctype))
+                    self.log.info("Generated %d cohesive elements of type '%s' and %d duplicated vertices" % (len(self.cohesiveCells), ctype, len(self.dupCoords)))
                     break
             if cohesiveType is None:
                 raise RuntimeError("Cohesive type not recognized!")
@@ -97,30 +97,25 @@ class Mesh:
         self.log.info("Wrote mesh to '%s' with format '%s'" % (meshFileOut, meshFormatOut))
 
     def PartitionMesh(self, numPart=-1):
-        if numPart == -1:
-            numPart = len(self.cells)
         if numPart == 1:
-            self.partitions = []
+            self.partitions = tuple()
             return
-        elif numPart < len(self.cells):
+        elif numPart == -1:
+            numPart = len(self.cells)
+        if numPart < len(self.cells):
             self.ncuts, membership = pymetis.part_graph(numPart, adjacency=self.cAdj)
             if self.ncuts == 0:
                 raise RuntimeError("No cuts were made by partitioner")
-            self.membership = np.array(membership, dtype=np.intp)
-            self.partitions = [np.argwhere(self.membership == x).ravel() for x in range(numPart)]
+            self.membership = np.array(membership)
+            self.partitions = tuple(np.argwhere(self.membership == x).ravel() for x in range(numPart))
         else:
             self.ncuts = -1
             self.membership = np.array([x for x in range(len(self.cells))])
-            self.partitions = [np.array([x]) for x in self.membership]
+            self.partitions = tuple(np.array([x]) for x in self.membership)
         nValid = sum(1 for i in self.partitions if len(i))
         self.log.info("Number of partitions requested %d, actual %d, average cells/partition %d" % (numPart, nValid, len(self.cells)/nValid))
-        partVMap = [np.unique(self.cells[part].ravel()) for part in self.partitions]
-        for vmap in partVMap:
-            try:
-                ctr += Counter(vmap)
-            except UnboundLocalError:
-                ctr = Counter(vmap)
-        self.partVMap = ctr
+        partVMap = tuple(np.unique(self.cells[part].ravel()) for part in self.partitions)
+        self.partVMap = Counter(flatten(partVMap))
         partCountSum = sum([len(x) for x in self.partitions])
         if partCountSum != len(self.cells):
             raise RuntimeError("Partition cell-count sum %d != global number of cells %d" % (partCountSum, len(self.cells)))
@@ -169,7 +164,7 @@ class Mesh:
         facesPerCell = len([_ for _ in combinations(range(len(cells[0])), faceDim)])
         for rowindex, row in enumerate(adjMat.data):
             neighbors = (i for i,k in enumerate(row) if k == faceDim)
-            adj[rowindex] = [adjMat.rows[rowindex][j] for j in neighbors]
+            adj[rowindex] = list(map(adjMat.rows[rowindex].__getitem__, neighbors))
             self.log.debug("cell %d adjacent to %s" % (rowindex, adj[rowindex]))
             if len(adj[rowindex]) != facesPerCell:
                 if fullClosure:
@@ -208,17 +203,19 @@ class Mesh:
                 bdNodes = [set(c)-flt for c in locBdFaces]
                 yield dict((i,j) for i,j in enumerate(bdNodes))
 
-    def DuplicateVertices(self, oldVertexList, globalDict, coords, partVMap):
+    def DuplicateVertices(self, oldVertexList, globalDict, coords, partVMap, dupCoords=None):
         try:
             convertableVertices = tuple(x for x in oldVertexList if x not in globalDict)
         except TypeError:
             pass
         if len(convertableVertices):
             try:
-                ndv = len(coords)+len(self.dupCoords)
-            except AttributeError:
-                # self.dupCoords doesn't exist yet
-                ndv = len(coords)
+                ndv = len(coords)+len(dupCoords)
+            except TypeError as e:
+                if "object of type 'NoneType' has no len()" in e.args:
+                    ndv = len(coords)
+                else:
+                    raise e
             vCounts = [partVMap[x]-1 for x in convertableVertices]
             newVCoords = []
             tdict = dict()
@@ -232,23 +229,31 @@ class Mesh:
                 newVCoords.extend([coords[v] for _ in range(cnt)])
                 self.log.debug("Duped vertex %d -> %s" % (v, tdict[v][0]))
             try:
-                self.dupCoords = np.vstack((self.dupCoords, newVCoords))
-            except AttributeError:
-                # self.dupCoords doesn't exist yet
-                self.dupCoords = np.array(newVCoords)
-            return tdict
+                dupCoords.extend(newVCoords)
+            except AttributeError as e:
+                # dupCoords is None
+                if "'NoneType' object has no attribute 'extend'" in e.args:
+                    dupCoords = newVCoords.copy()
+                else:
+                    raise e
+            return dupCoords, tdict
         else:
             self.log.debug("No vertices to duplicate")
-            return dict()
+            return dupCoords, {}
 
     def GenerateGlobalConversion(self, globConvDict):
-        for bdFaces in self.GenerateLocalBoundaryFaces():
-            # old vertex IDs
-            oldVertices = set(flatten(flatten(bdFaces.values())))
-            # duplicate the vertices, return the duplicates new IDs
-            locConvDict = self.DuplicateVertices(oldVertices, globConvDict, self.coords, self.partVMap)
-            yield bdFaces, globConvDict
-            globConvDict.update(locConvDict)
+        try:
+            dupCoords = None
+            for bdFaces in self.GenerateLocalBoundaryFaces():
+                # old vertex IDs
+                oldVertices = set(flatten(flatten(bdFaces.values())))
+                # duplicate the vertices, return the duplicates new IDs
+                dupCoords, locConvDict = self.DuplicateVertices(oldVertices, globConvDict,  self.coords, self.partVMap, dupCoords)
+                yield bdFaces, globConvDict
+                globConvDict.update(locConvDict)
+        finally:
+            # fancy trickery to update the coordinates __after__ the final yield has been called
+            self.dupCoords = np.array(dupCoords)
 
     def RemapVertices(self):
         modSourceVertices = []

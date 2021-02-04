@@ -1,16 +1,17 @@
 import setuptools, unittest
 
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
 def findTests():
     testLoader = unittest.TestLoader()
     testSuite = testLoader.discover('test', pattern='test_*.py')
     return test_suite
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
 
 setuptools.setup(
     name="pyhesive", # Replace with your own username
-    version="0.1.7.0",
+    version="0.2.0",
     author="Jacob Faibussowitsch",
     author_email="jacob.fai@gmail.com",
     description="Insert cohesive elements into any mesh",
