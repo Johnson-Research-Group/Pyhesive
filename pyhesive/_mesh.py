@@ -97,19 +97,23 @@ class Mesh:
         self.log.info("Wrote mesh to '%s' with format '%s'" % (meshFileOut, meshFormatOut))
 
     def PartitionMesh(self, numPart=-1):
-        if numPart == 1:
-            self.partitions = tuple()
+        self.ncuts = -1
+        self.membership = np.array([])
+        self.partitions = tuple()
+        self.partVMap = Counter()
+        if numPart in (0, 1):
             return
-        elif numPart == -1:
+        if numPart == -1:
             numPart = len(self.cells)
+        elif numPart > len(self.cells):
+            self.log.warning("Number of partitions %d > num cells %d, using num cells instead" % (numPart, len(self.cells)))
         if numPart < len(self.cells):
             self.ncuts, membership = pymetis.part_graph(numPart, adjacency=self.cAdj)
             if self.ncuts == 0:
-                raise RuntimeError("No cuts were made by partitioner")
+                raise RuntimeError("No partitions were made by partitioner")
             self.membership = np.array(membership)
             self.partitions = tuple(np.argwhere(self.membership == x).ravel() for x in range(numPart))
         else:
-            self.ncuts = -1
             self.membership = np.array([x for x in range(len(self.cells))])
             self.partitions = tuple(np.array([x]) for x in self.membership)
         nValid = sum(1 for i in self.partitions if len(i))

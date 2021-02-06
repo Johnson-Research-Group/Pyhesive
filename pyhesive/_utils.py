@@ -50,10 +50,3 @@ def l2s(inlist):
 
 def flatten(inlist):
     return [item for sublist in inlist for item in sublist]
-
-def storeMatrix(filename, mat):
-    sparse.save_npz(filename, mat, compressed=True)
-
-def loadMatrix(filename, format=None):
-    mat = sparse.load_npz(filename)
-    return mat.asformat(format, copy=False)

@@ -3,9 +3,7 @@
 """
 @author: jacobfaibussowitsch
 """
-import argparse
-import sys
-import os
+import sys, os, argparse
 try:
     import pyhesive
 except ModuleNotFoundError:

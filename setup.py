@@ -3,12 +3,6 @@ import setuptools, unittest
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-def findTests():
-    testLoader = unittest.TestLoader()
-    testSuite = testLoader.discover('test', pattern='test_*.py')
-    return test_suite
-
-
 setuptools.setup(
     name="pyhesive", # Replace with your own username
     version="0.2.0",
@@ -48,6 +42,9 @@ setuptools.setup(
         'meshio',
         'pymetis'
     ],
-    python_requires='>=3.6',
-    test_suite="test"
+    python_requires=">=3.4",
+    tests_require = [
+        "nose2"
+    ],
+    test_suite="nose2.collector.collector"
 )

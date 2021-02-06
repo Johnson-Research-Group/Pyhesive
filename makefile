@@ -1,6 +1,6 @@
 LOCDIR           = ./
-DIRS             = $(addprefix $(LOCDIR), pyhesive)
-TESTDIR          = $(addprefix $(LOCDIR), test)
+PACKAGE_ROOT     = $(addprefix $(LOCDIR), pyhesive)
+TESTDIR          = $(addprefix $(PACKAGE_ROOT), test)
 PACKAGE_DIRS     = build dist pyhesive.egg-info
 PYTHON3          = python3
 VENV_DIRS        = venv
@@ -45,9 +45,10 @@ test-install:
 	@echo "          All Install Tests Completed Successfully"
 	@echo "==================================================================="
 
-test: test-install
+test:
 	@. $(LOCDIR)venv/bin/activate && \
-	cd $(TESTDIR) && $(PYTHON3) ./testMesh.py
+	pip3 install --upgrade nose2 && \
+	$(PYTHON3) -m nose2
 	@echo "==================================================================="
 	@echo "               All Tests Completed Successfully"
 	@echo "==================================================================="
