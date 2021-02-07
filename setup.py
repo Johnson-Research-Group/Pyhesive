@@ -44,7 +44,8 @@ setuptools.setup(
     ],
     python_requires=">=3.4",
     tests_require = [
-        "nose2"
+        "nose2",
+        "multiprocess"
     ],
     test_suite="nose2.collector.collector"
 )

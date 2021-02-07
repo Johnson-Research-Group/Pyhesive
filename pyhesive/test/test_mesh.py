@@ -6,8 +6,8 @@ Created on Tue Feb  2 10:17:49 2021
 @author: jacobfaibussowitsch
 """
 import sys, os, unittest, nose2, meshio, pickle, scipy, argparse
-from unittest.mock import patch
 import numpy as np
+
 try:
     import pyhesive
 except ModuleNotFoundError:
@@ -49,8 +49,18 @@ matFileList = [simpleAdjMatFile, smallCubeAdjMatFile]
 
 simpleClosureDictFile = os.path.join(dataDir, "simpleClosure.pkl")
 smallCubeClosureDictFile = os.path.join(dataDir, "smallCubeClosure.pkl")
-mediumCubeClosueDictFile = os.path.join(dataDir, "mediumCubeClosure.pkl")
-closureDictFileList = [simpleClosureDictFile, smallCubeClosureDictFile, mediumCubeClosueDictFile]
+mediumCubeClosureDictFile = os.path.join(dataDir, "mediumCubeClosure.pkl")
+closureDictFileList = [simpleClosureDictFile, smallCubeClosureDictFile, mediumCubeClosureDictFile]
+
+simpleBoundaryDictFile = os.path.join(dataDir, "simpleBoundary.pkl")
+smallCubeBoundaryDictFile = os.path.join(dataDir, "smallCubeBoundary.pkl")
+mediumCubeBoundaryDictFile = os.path.join(dataDir, "mediumCubeBoundary.pkl")
+boundaryDictFileList = [simpleBoundaryDictFile, smallCubeBoundaryDictFile, mediumCubeBoundaryDictFile]
+
+simpleGlobConvDictFile = os.path.join(dataDir, "simpleGlobConv.pkl")
+smallCubeGlobConvDictFile = os.path.join(dataDir, "smallCubeGlobConv.pkl")
+mediumCubeGlobConvDictFile = os.path.join(dataDir, "mediumCubeGlobConv.pkl")
+globConvDictFileList = [simpleGlobConvDictFile, smallCubeGlobConvDictFile, mediumCubeGlobConvDictFile]
 
 pickleProtocol = 4
 
@@ -88,7 +98,7 @@ class testMesh(unittest.TestCase):
         parser = argparse.ArgumentParser(description="Customize test harness", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         parser.add_argument("-RRR", "--REPLACE", help="replace existing diff files", dest="replaceFiles", action='store_true')
         parser.set_defaults(replaceFiles=False)
-        args = parser.parse_known_args(args=argList, namespace=cls)
+        parser.parse_known_args(args=argList, namespace=cls)
 
     def test_createFromMeshIO(self):
         mesh = makeSingleton()
@@ -158,34 +168,86 @@ class testMesh(unittest.TestCase):
                 testBase(self, meshFile, matFile)
 
     def test_Closure(self):
-        def testDictObjs(obj, pyhObj, testObj):
-            obj.assertEqual(len(pyhObj), len(testObj))
-            for c in pyhObj:
-                with obj.subTest(cell=c):
-                    obj.assertEqual(pyhObj[c], testObj[c])
-
-        def testListObjs(obj, pyhObj, testObj):
-            obj.assertEqual(len(pyhObj), len(testObj))
-            for i, (pyhSub, testSub) in enumerate(zip(pyhObj, testObj)):
-                with obj.subTest(cell=i):
-                    obj.assertEqual(pyhSub, testSub)
-
-        def testBase(obj, meshf, dictf):
-            with pyhesive.Mesh.fromFile(meshf) as pyh:
-                if obj.replaceFiles:
-                    combinedDict = {"cellAdjacency" : pyh.cAdj,
-                                    "boundaryCells" : pyh.bdCells,
-                                    "boundaryFaces" : pyh.bdFaces}
-                    storeObj(dictf, combinedDict)
-                    return
-                testDict = loadObj(dictf)
-                testDictObjs(obj, pyh.cAdj, testDict["cellAdjacency"])
-                testListObjs(obj, pyh.bdCells, testDict["boundaryCells"])
-                testListObjs(obj, pyh.bdFaces, testDict["boundaryFaces"])
-
+        subDictAdj = "cellAdjacency"
+        subDictBdC = "boundaryCells"
+        subDictBdF = "boundaryFaces"
         for meshFile, closureDictFile in zip(meshFileList, closureDictFileList):
             with self.subTest(meshFile=meshFile):
-                testBase(self, meshFile, closureDictFile)
+                with pyhesive.Mesh.fromFile(meshFile) as pyh:
+                    if self.replaceFiles:
+                        combinedDict = {subDictAdj : pyh.cAdj,
+                                        subDictBdC : pyh.bdCells,
+                                        subDictBdF : pyh.bdFaces}
+                        storeObj(closureDictFile, combinedDict)
+                        continue
+                    testDict = loadObj(closureDictFile)
+                    with self.subTest(subDict=subDictAdj):
+                        self.assertEqual(pyh.cAdj, testDict[subDictAdj])
+                    with self.subTest(subDict=subDictBdC):
+                        self.assertEqual(pyh.bdCells, testDict[subDictBdC])
+                    with self.subTest(subDict=subDictBdF):
+                        self.assertEqual(pyh.bdFaces, testDict[subDictBdF])
+
+    def commonPartitionSetup(self, meshFileList, testFileList, partitionList, replaceFunc, testFunc):
+        for meshFile, testFile, partList in zip(meshFileList, testFileList, partitionList):
+            with self.subTest(meshFile=meshFile, partList=partList):
+                with pyhesive.Mesh.fromFile(meshFile) as pyh:
+                    if self.replaceFiles:
+                        replaceFunc(pyh, testFile, partList)
+                        continue
+                    testDict = loadObj(testFile)
+                    for part, testPart in zip(partList, testDict):
+                        with self.subTest(part=part):
+                            self.assertEqual(part, testPart)
+                            pyh.PartitionMesh(part)
+                            testFunc(self, pyh, testDict, part)
+
+
+    def test_LocalBoundaryFaces(self):
+        def replaceFunc(pyh, testFile, partList):
+            combinedDict= dict()
+            for part in partList:
+                pyh.PartitionMesh(part)
+                combinedDict[part] = tuple(bdface for bdface in pyh.GenerateLocalBoundaryFaces())
+            storeObj(testFile, combinedDict)
+
+        def testFunc(obj, pyh, testDict, part):
+            for bdFaceDict, testSubPart in zip(pyh.GenerateLocalBoundaryFaces(), testDict[part]):
+                for cell, testCell in zip(bdFaceDict, testSubPart):
+                    with obj.subTest(cell=cell):
+                        obj.assertEqual(cell, testCell)
+                        obj.assertEqual(bdFaceDict[cell], testSubPart[cell])
+
+        partitionListSuccess = [[10,20,-1],
+                                [10,30,50,-1],
+                                [20,500,1000,-1]]
+        self.commonPartitionSetup(meshFileList, boundaryDictFileList, partitionListSuccess, replaceFunc, testFunc)
+
+    def test_GlobalConversion(self):
+        def replaceFunc(pyh, testFile, partList):
+            combinedDict = dict()
+            for part in partList:
+                pyh.PartitionMesh(part)
+                dummyGlobDict = dict()
+                for _, dummyGlobDict in pyh.GenerateGlobalConversion(dummyGlobDict):
+                    pass
+                combinedDict[part] = (dummyGlobDict, pyh.dupCoords)
+            storeObj(testFile, combinedDict)
+
+        def testFunc(obj, pyh, testDict, part):
+            testConv, testArr = testDict[part]
+            globConv = dict()
+            # iterate through generator to pupolate the dict
+            for _, globConv in pyh.GenerateGlobalConversion(globConv):
+                pass
+            obj.assertEqual(globConv, testConv)
+            np.testing.assert_array_equal(pyh.dupCoords, testArr, err_msg="Locations: %s" % (np.argwhere(pyh.dupCoords != testArr)))
+
+        partitionList = [[7,13,-1],
+                         [11,23,48,-1],
+                         [87,366,1234,-1]]
+        self.commonPartitionSetup(meshFileList, globConvDictFileList, partitionList, replaceFunc, testFunc)
+
 
 if __name__ == '__main__':
     nose2.main(plugins=["pyhesive.test.plugin"], verbosity=9)

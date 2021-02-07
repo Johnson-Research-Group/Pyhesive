@@ -5,10 +5,10 @@ Created on Mon Nov  9 17:44:24 2020
 
 @author: jacobfaibussowitsch
 """
-from ._utils import *
+from ._utils import flatten
 
 import logging, atexit, meshio, pymetis, sys
-from collections import defaultdict, Counter, deque
+from collections import Counter, deque
 from itertools import combinations
 from scipy import sparse
 import numpy as np
@@ -246,8 +246,9 @@ class Mesh:
             return dupCoords, {}
 
     def GenerateGlobalConversion(self, globConvDict):
+        self.dupCoords = None
+        dupCoords = None
         try:
-            dupCoords = None
             for bdFaces in self.GenerateLocalBoundaryFaces():
                 # old vertex IDs
                 oldVertices = set(flatten(flatten(bdFaces.values())))
