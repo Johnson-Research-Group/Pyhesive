@@ -225,7 +225,6 @@ class testMesh(unittest.TestCase):
                             pyh.PartitionMesh(part)
                             testFunc(self, pyh, testDict, part)
 
-
     def test_LocalBoundaryFaces(self):
         def replaceFunc(pyh, testFile, partList):
             combinedDict= dict()

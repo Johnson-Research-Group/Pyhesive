@@ -23,8 +23,10 @@ test-upload: package
 upload: package
 	-@$(PYTHON3) -m twine upload dist/*
 
-test-install:
+create-venv:
 	-@test -d venv || virtualenv -p $(PYTHON3) venv
+
+test-install: create-venv
 	@echo "==================================================================="
 	@echo "                 Installing From TestPyPi"
 	@echo "==================================================================="
@@ -45,10 +47,10 @@ test-install:
 	@echo "          All Install Tests Completed Successfully"
 	@echo "==================================================================="
 
-test:
+test: create-venv
 	@. $(LOCDIR)venv/bin/activate && \
-	pip3 install --upgrade nose2 && \
-	$(PYTHON3) -m nose2
+	pip3 install --upgrade nose2 pyhesive && \
+	$(PYTHON3) -m nose2 $(NOSE_ARGS)
 	@echo "==================================================================="
 	@echo "               All Tests Completed Successfully"
 	@echo "==================================================================="
