@@ -5,7 +5,7 @@ Created on Tue Feb  2 10:17:49 2021
 
 @author: jacobfaibussowitsch
 """
-import sys, os, unittest, nose2, meshio, pickle, scipy, argparse
+import sys, os, unittest, nose2, meshio, pickle, scipy, argparse, copy
 import numpy as np
 
 try:
@@ -37,30 +37,41 @@ testRootDir = os.path.realpath(os.path.expanduser(testRootDir))
 pyhesiveRootDir = os.path.dirname(testRootDir)
 dataDir = os.path.join(testRootDir, "data")
 meshDir = os.path.join(dataDir, "meshes")
+binDir = os.path.join(dataDir, "bin")
 
 simpleCubeMeshFile = os.path.join(meshDir, "simple.msh")
 smallCubeMeshFile = os.path.join(meshDir, "SmallCube.msh")
 mediumCubeMeshFile = os.path.join(meshDir, "MediumCube.msh")
 meshFileList = [simpleCubeMeshFile, smallCubeMeshFile, mediumCubeMeshFile]
 
-simpleAdjMatFile = os.path.join(dataDir, "simpleAdj.npz")
-smallCubeAdjMatFile = os.path.join(dataDir, "smallCubeAdj.npz")
+simpleAdjMatFile = os.path.join(binDir, "simpleAdj.npz")
+smallCubeAdjMatFile = os.path.join(binDir, "smallCubeAdj.npz")
 matFileList = [simpleAdjMatFile, smallCubeAdjMatFile]
 
-simpleClosureDictFile = os.path.join(dataDir, "simpleClosure.pkl")
-smallCubeClosureDictFile = os.path.join(dataDir, "smallCubeClosure.pkl")
-mediumCubeClosureDictFile = os.path.join(dataDir, "mediumCubeClosure.pkl")
+simpleClosureDictFile = os.path.join(binDir, "simpleClosure.pkl")
+smallCubeClosureDictFile = os.path.join(binDir, "smallCubeClosure.pkl")
+mediumCubeClosureDictFile = os.path.join(binDir, "mediumCubeClosure.pkl")
 closureDictFileList = [simpleClosureDictFile, smallCubeClosureDictFile, mediumCubeClosureDictFile]
 
-simpleBoundaryDictFile = os.path.join(dataDir, "simpleBoundary.pkl")
-smallCubeBoundaryDictFile = os.path.join(dataDir, "smallCubeBoundary.pkl")
-mediumCubeBoundaryDictFile = os.path.join(dataDir, "mediumCubeBoundary.pkl")
+simpleBoundaryDictFile = os.path.join(binDir, "simpleBoundary.pkl")
+smallCubeBoundaryDictFile = os.path.join(binDir, "smallCubeBoundary.pkl")
+mediumCubeBoundaryDictFile = os.path.join(binDir, "mediumCubeBoundary.pkl")
 boundaryDictFileList = [simpleBoundaryDictFile, smallCubeBoundaryDictFile, mediumCubeBoundaryDictFile]
 
-simpleGlobConvDictFile = os.path.join(dataDir, "simpleGlobConv.pkl")
-smallCubeGlobConvDictFile = os.path.join(dataDir, "smallCubeGlobConv.pkl")
-mediumCubeGlobConvDictFile = os.path.join(dataDir, "mediumCubeGlobConv.pkl")
+simpleGlobConvDictFile = os.path.join(binDir, "simpleGlobConv.pkl")
+smallCubeGlobConvDictFile = os.path.join(binDir, "smallCubeGlobConv.pkl")
+mediumCubeGlobConvDictFile = os.path.join(binDir, "mediumCubeGlobConv.pkl")
 globConvDictFileList = [simpleGlobConvDictFile, smallCubeGlobConvDictFile, mediumCubeGlobConvDictFile]
+
+simpleVertexMapFile = os.path.join(binDir, "simpleVertexMap.pkl")
+smallCubeVertexMapFile = os.path.join(binDir, "smallVertexMap.pkl")
+mediumCubeVertexMapFile = os.path.join(binDir, "mediumVertexMap.pkl")
+vertexMapFileList = [simpleVertexMapFile, smallCubeVertexMapFile, mediumCubeVertexMapFile]
+
+simpleOutputMeshFile = os.path.join(binDir, "simpleOutputMesh.pkl")
+smallCubeOutputMeshFile = os.path.join(binDir, "smallOutputMesh.pkl")
+mediumCubeOutputMeshFile = os.path.join(binDir, "mediumOutputMesh.pkl")
+outputMeshFileList = [simpleOutputMeshFile, smallCubeOutputMeshFile, mediumCubeOutputMeshFile]
 
 pickleProtocol = 4
 
@@ -93,12 +104,24 @@ def makeSingleton():
     return meshio.Mesh(points, cells)
 
 class testMesh(unittest.TestCase):
-    @classmethod
-    def setUp(cls, argList=sys.argv):
+    #@classmethod
+    def setUp(self, argList=sys.argv):
         parser = argparse.ArgumentParser(description="Customize test harness", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         parser.add_argument("-RRR", "--REPLACE", help="replace existing diff files", dest="replaceFiles", action='store_true')
         parser.set_defaults(replaceFiles=False)
-        parser.parse_known_args(args=argList, namespace=cls)
+        parser.parse_known_args(args=argList, namespace=self)
+        self.addTypeEqualityFunc(np.ndarray, self.assertNumpyArrayEqual)
+
+    def assertNumpyArrayEqual(self, first, second, msg=None):
+        try:
+            np.testing.assert_array_equal(first, second)
+        except AssertionError:
+            additionalMsg = "Locations: %s" % (np.argwhere(first != second))
+            if msg is not None:
+                msg = msg+"\n"+additionalMsg
+            else:
+                msg = additionalMsg
+            raise self.failureException(msg)
 
     def test_createFromMeshIO(self):
         mesh = makeSingleton()
@@ -241,13 +264,81 @@ class testMesh(unittest.TestCase):
             for _, globConv in pyh.GenerateGlobalConversion(globConv):
                 pass
             obj.assertEqual(globConv, testConv)
-            np.testing.assert_array_equal(pyh.dupCoords, testArr, err_msg="Locations: %s" % (np.argwhere(pyh.dupCoords != testArr)))
+            obj.assertEqual(pyh.dupCoords, testArr)
 
         partitionList = [[7,13,-1],
                          [11,23,48,-1],
                          [87,366,1234,-1]]
         self.commonPartitionSetup(meshFileList, globConvDictFileList, partitionList, replaceFunc, testFunc)
 
+    def test_RemapVertices(self):
+        def replaceFunc(pyh, testFile, partList):
+            combinedDict = dict()
+            for part in partList:
+                # remap vertices is a destructive op, need a fresh new copy every time
+                copyPyh = copy.deepcopy(pyh)
+                copyPyh.PartitionMesh(part)
+                src, dest = copyPyh.RemapVertices()
+                combinedDict[part] = (src, dest, copyPyh.cells)
+            storeObj(testFile, combinedDict)
+
+        def testFunc(obj, pyh, testDict, part):
+            testSrc, testDest, testArr = testDict[part]
+            # remap vertices is a destructive op, need a fresh new copy every time
+            copyPyh = copy.deepcopy(pyh)
+            src, dest = copyPyh.RemapVertices()
+            obj.assertEqual(src, testSrc)
+            obj.assertEqual(dest, testDest)
+            obj.assertEqual(copyPyh.cells, testArr)
+
+        partitionList = [[3,13,18,-1],
+                         [35,38,43,-1],
+                         [123,745,999,-1]]
+        self.commonPartitionSetup(meshFileList, vertexMapFileList, partitionList, replaceFunc, testFunc)
+
+    def compareClasses(self, first, second, msg=None):
+        self.assertEqual(type(first), type(second), msg=msg)
+        try:
+            type(vars(first)) is dict
+        except:
+            self.assertEqual(first, second, msg=msg)
+        else:
+            for i in vars(first).keys():
+                try:
+                    type(vars(vars(first)[i])) is dict
+                except:
+                    # handles list of classes too
+                    if type(vars(first)[i]) is list:
+                        for f, s in zip(vars(first)[i], vars(second)[i]):
+                            self.compareClasses(f, s, msg=msg)
+                    else:
+                        self.assertEqual(vars(first)[i], vars(second)[i], msg=msg)
+                else:
+                    self.compareClasses(vars(first)[i], vars(second)[i], msg=msg)
+
+    def test_FullStack(self):
+        def replaceFunc(pyh, testFile, partList):
+            combinedDict = dict()
+            for part in partList:
+                copyPyh = copy.deepcopy(pyh)
+                copyPyh.PartitionMesh(part)
+                copyPyh.GenerateElements()
+                combinedDict[part] = copyPyh.WriteMesh(None, returnMesh=True)
+            storeObj(testFile, combinedDict)
+
+        def testFunc(obj, pyh, testDict, part):
+            testMesh = testDict[part]
+            # Full stack is obviously destructive
+            copyPyh = copy.deepcopy(pyh)
+            copyPyh.GenerateElements()
+            mesh = copyPyh.WriteMesh(None, returnMesh=True)
+            #obj.assertEqual(mesh, testMesh)
+            obj.compareClasses(mesh, testMesh)
+
+        partitionList = [[9,16,23,-1],
+                         [10,16,34,-1],
+                         [234,555,812,-1]]
+        self.commonPartitionSetup(meshFileList, outputMeshFileList, partitionList, replaceFunc, testFunc)
 
 if __name__ == '__main__':
     nose2.main(plugins=["pyhesive.test.plugin"], verbosity=9)

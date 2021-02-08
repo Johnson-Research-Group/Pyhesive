@@ -75,7 +75,7 @@ class Mesh:
         self.registered_exit = False
         return
 
-    def WriteMesh(self, meshFileOut, meshFormatOut=None, prune=False):
+    def WriteMesh(self, meshFileOut, meshFormatOut=None, prune=False, returnMesh=False):
         cells = [(self.cType, self.cells)]
         if self.cohesiveCells is not None:
             npts = len(self.cohesiveCells[0])
@@ -93,8 +93,11 @@ class Mesh:
         meshOut = meshio.Mesh(self.coords, cells)
         if prune:
             meshOut.remove_orphaned_nodes()
-        meshio.write(meshFileOut, meshOut, file_format=meshFormatOut)
-        self.log.info("Wrote mesh to '%s' with format '%s'" % (meshFileOut, meshFormatOut))
+        if returnMesh:
+            return meshOut
+        else:
+            meshio.write(meshFileOut, meshOut, file_format=meshFormatOut)
+            self.log.info("Wrote mesh to '%s' with format '%s'" % (meshFileOut, meshFormatOut))
 
     def PartitionMesh(self, numPart=-1):
         self.ncuts = -1
