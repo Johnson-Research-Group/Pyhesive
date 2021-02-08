@@ -49,8 +49,8 @@ test-install: create-venv
 
 test: create-venv
 	@. $(LOCDIR)venv/bin/activate && \
-	pip3 install --upgrade nose2 pyhesive && \
-	$(PYTHON3) -m nose2 $(NOSE_ARGS)
+	pip3 install --upgrade pytest pytest-xdist pyhesive && \
+	$(PYTHON3) -m pytest $(PYTEST_ARGS)
 	@echo "==================================================================="
 	@echo "               All Tests Completed Successfully"
 	@echo "==================================================================="

@@ -62,7 +62,6 @@ class Mesh:
             import traceback
             traceback.print_exception(exc_type, exc_value, tb)
         self.Finalize()
-        return True
 
     def Finalize(self):
         if hasattr(self, 'log'):
@@ -73,7 +72,6 @@ class Mesh:
                 self.log.removeHandler(handler)
         atexit.unregister(self.Finalize)
         self.registered_exit = False
-        return
 
     def WriteMesh(self, meshFileOut, meshFormatOut=None, prune=False, returnMesh=False):
         cells = [(self.cType, self.cells)]
@@ -146,10 +144,8 @@ class Mesh:
         ne = len(cells)
         element_ids = np.empty((ne, len(cells[0])), dtype=np.intp)
         element_ids[:] = np.arange(ne).reshape(-1, 1)
-        v2c = sparse.coo_matrix(
-            (np.ones((ne*len(element_ids[0]),), dtype=np.intp),
-            (cells.ravel(),
-            element_ids.ravel(),)))
+        v2c = sparse.coo_matrix((np.ones((ne*len(element_ids[0]),),dtype=np.intp),
+                                (cells.ravel(),element_ids.ravel(),)))
         v2c = v2c.tocsr(copy=False)
         c2c = v2c.T @ v2c
         self.log.debug("c2c mat size %g kB" % (matsize(c2c)/(1024**2)))

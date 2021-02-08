@@ -5,8 +5,9 @@ Created on Tue Feb  2 10:17:49 2021
 
 @author: jacobfaibussowitsch
 """
-import sys, os, unittest, nose2, meshio, pickle, scipy, argparse, copy
+import sys, os, meshio, pickle, scipy, argparse, copy, unittest, pytest
 import numpy as np
+import re
 
 try:
     import pyhesive
@@ -75,6 +76,16 @@ outputMeshFileList = [simpleOutputMeshFile, smallCubeOutputMeshFile, mediumCubeO
 
 pickleProtocol = 4
 
+def pytest_generate_tests(metafunc):
+    '''
+    Insert command line options to classes that have them
+    '''
+    replace = metafunc.config.getoption("pyhesive_replace")
+    # check if this function is in a test-class that needs the cmd-line args
+    if replace and hasattr(metafunc.cls, "replaceFiles"):
+        # now set the cmd-line args to the test class
+        metafunc.cls.replaceFiles = bool(replace)
+
 def storeMatrix(filename, mat):
     scipy.sparse.save_npz(filename, mat, compressed=True)
     print("Wrote mat %s to file %s" % (mat.__class__, filename))
@@ -104,62 +115,68 @@ def makeSingleton():
     return meshio.Mesh(points, cells)
 
 class testMesh(unittest.TestCase):
-    #@classmethod
+    replaceFiles = False
+
     def setUp(self, argList=sys.argv):
+        '''
         parser = argparse.ArgumentParser(description="Customize test harness", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         parser.add_argument("-RRR", "--REPLACE", help="replace existing diff files", dest="replaceFiles", action='store_true')
         parser.set_defaults(replaceFiles=False)
-        parser.parse_known_args(args=argList, namespace=self)
+        args, unknown = parser.parse_known_args(args=argList)
+        self.replaceFiles = args.replaceFiles
+        '''
         self.addTypeEqualityFunc(np.ndarray, self.assertNumpyArrayEqual)
 
     def assertNumpyArrayEqual(self, first, second, msg=None):
+        assert type(first) == np.ndarray, msg
+        assert type(first) == type(second), msg
         try:
             np.testing.assert_array_equal(first, second)
         except AssertionError:
             additionalMsg = "Locations: %s" % (np.argwhere(first != second))
             if msg is not None:
-                msg = msg+"\n"+additionalMsg
+                msg = "\n".join([msg, additionalMsg])
             else:
                 msg = additionalMsg
-            raise self.failureException(msg)
+            pytest.fail(msg)
 
     def test_createFromMeshIO(self):
         mesh = makeSingleton()
         with pyhesive.Mesh(mesh) as pyh:
-            self.assertEqual(pyh.cType, 'tetra')
-            self.assertEqual(pyh.cDim, 4)
-            self.assertEqual(len(pyh.cells), 1)
-            self.assertEqual(len(pyh.coords), 4)
-            self.assertEqual(pyh.faceDim, 3)
+            assert pyh.cType == 'tetra'
+            assert pyh.cDim == 4
+            assert len(pyh.cells) == 1
+            assert len(pyh.coords) == 4
+            assert pyh.faceDim == 3
 
     def test_createFromFile(self):
         with pyhesive.Mesh.fromFile(smallCubeMeshFile) as pyh:
-            self.assertEqual(pyh.cType, 'tetra')
-            self.assertEqual(pyh.cDim, 4)
-            self.assertEqual(len(pyh.cells), 200)
-            self.assertEqual(len(pyh.coords), 90)
-            self.assertEqual(pyh.faceDim, 3)
+            assert pyh.cType == 'tetra'
+            assert pyh.cDim == 4
+            assert len(pyh.cells) == 200
+            assert len(pyh.coords) == 90
+            assert pyh.faceDim == 3
 
     def test_Partition(self):
-        def testLogWarn(tobj, pyhobj, itr):
-            with tobj.assertLogs(pyhobj.log, level='WARNING') as cm:
-                pyhobj.PartitionMesh(itr)
-                tobj.assertRegex(*cm.output, "(Number of partitions )(\d+)( > num cells)\s(\d+)(, using num cells instead)")
+        def testLogWarn(self, pyh, itr):
+            with self.assertLogs(pyh.log, level='WARNING') as cm:
+                pyh.PartitionMesh(itr)
+                assert re.search(r"(Number of partitions )(\d+)( > num cells)\s(\d+)(, using num cells instead)", *cm.output)
 
-        def testSuccess(tobj, pyhobj, itr):
-            pyhobj.PartitionMesh(itr)
+        def testSuccess(self, pyh, itr):
+            pyh.PartitionMesh(itr)
             if itr == -1:
-                tobj.assertEqual(len(pyhobj.partitions), len(pyhobj.cells))
+                assert len(pyh.partitions) == len(pyh.cells)
             elif itr in (0, 1):
-                tobj.assertEqual(pyhobj.partitions, tuple())
+                assert pyh.partitions == tuple()
             else:
-                tobj.assertEqual(len(pyhobj.partitions), itr)
+                assert len(pyh.partitions) == itr
 
-        def testBase(obj, file, partList, func):
+        def testBase(self, file, partList, func):
             with pyhesive.Mesh.fromFile(file) as pyh:
                 for numPart in partList:
-                    with obj.subTest(numPart=numPart):
-                        func(obj, pyh, numPart)
+                    with self.subTest(numPart=numPart):
+                        func(self, pyh, numPart)
 
         partListSuccess = [[-1,0,1,10,20],
                           [-1,0,1,10,20,30,40,50],
@@ -172,23 +189,19 @@ class testMesh(unittest.TestCase):
                 testBase(self, meshFile, partWarn, testLogWarn)
 
     def test_BuildAdjacencyMatrix(self):
-        def testBase(obj, meshf, matf):
-            with pyhesive.Mesh.fromFile(meshf) as pyh:
-                if obj.replaceFiles:
-                    storeMatrix(matf, pyh.adjMat.tocsr())
-                    return
-                testMat = loadMatrix(matf, format='lil')
-                obj.assertEqual(testMat.shape, pyh.adjMat.shape)
-                for i in range(len(pyh.cells)):
-                    with obj.subTest(i=i):
-                        rowTest = testMat.getrowview(i).todense()
-                        rowMine = pyh.adjMat.getrowview(i).todense()
-                        diffs = len(np.argwhere(rowTest != rowMine))
-                        obj.assertEqual(diffs, 0)
-
         for meshFile, matFile in zip(meshFileList, matFileList):
             with self.subTest(meshFile=meshFile):
-                testBase(self, meshFile, matFile)
+                with pyhesive.Mesh.fromFile(meshFile) as pyh:
+                    if self.replaceFiles:
+                        storeMatrix(matFile, pyh.adjMat.tocsr())
+                        continue
+                    testMat = loadMatrix(matFile, format='lil')
+                    assert testMat.shape == pyh.adjMat.shape
+                    for i in range(len(pyh.cells)):
+                        with self.subTest(row=i):
+                            rowTest = testMat.getrowview(i).toarray()
+                            rowMine = pyh.adjMat.getrowview(i).toarray()
+                            self.assertNumpyArrayEqual(rowMine, rowTest)
 
     def test_Closure(self):
         subDictAdj = "cellAdjacency"
@@ -205,11 +218,11 @@ class testMesh(unittest.TestCase):
                         continue
                     testDict = loadObj(closureDictFile)
                     with self.subTest(subDict=subDictAdj):
-                        self.assertEqual(pyh.cAdj, testDict[subDictAdj])
+                        assert pyh.cAdj == testDict[subDictAdj]
                     with self.subTest(subDict=subDictBdC):
-                        self.assertEqual(pyh.bdCells, testDict[subDictBdC])
+                        assert pyh.bdCells == testDict[subDictBdC]
                     with self.subTest(subDict=subDictBdF):
-                        self.assertEqual(pyh.bdFaces, testDict[subDictBdF])
+                        assert pyh.bdFaces == testDict[subDictBdF]
 
     def commonPartitionSetup(self, meshFileList, testFileList, partitionList, replaceFunc, testFunc):
         for meshFile, testFile, partList in zip(meshFileList, testFileList, partitionList):
@@ -221,7 +234,7 @@ class testMesh(unittest.TestCase):
                     testDict = loadObj(testFile)
                     for part, testPart in zip(partList, testDict):
                         with self.subTest(part=part):
-                            self.assertEqual(part, testPart)
+                            assert part == testPart
                             pyh.PartitionMesh(part)
                             testFunc(self, pyh, testDict, part)
 
@@ -233,12 +246,12 @@ class testMesh(unittest.TestCase):
                 combinedDict[part] = tuple(bdface for bdface in pyh.GenerateLocalBoundaryFaces())
             storeObj(testFile, combinedDict)
 
-        def testFunc(obj, pyh, testDict, part):
+        def testFunc(self, pyh, testDict, part):
             for bdFaceDict, testSubPart in zip(pyh.GenerateLocalBoundaryFaces(), testDict[part]):
                 for cell, testCell in zip(bdFaceDict, testSubPart):
-                    with obj.subTest(cell=cell):
-                        obj.assertEqual(cell, testCell)
-                        obj.assertEqual(bdFaceDict[cell], testSubPart[cell])
+                    with self.subTest(cell=cell):
+                        assert cell == testCell
+                        assert bdFaceDict[cell] == testSubPart[cell]
 
         partitionListSuccess = [[10,20,-1],
                                 [10,30,50,-1],
@@ -256,14 +269,14 @@ class testMesh(unittest.TestCase):
                 combinedDict[part] = (dummyGlobDict, pyh.dupCoords)
             storeObj(testFile, combinedDict)
 
-        def testFunc(obj, pyh, testDict, part):
+        def testFunc(self, pyh, testDict, part):
             testConv, testArr = testDict[part]
             globConv = dict()
             # iterate through generator to pupolate the dict
             for _, globConv in pyh.GenerateGlobalConversion(globConv):
                 pass
-            obj.assertEqual(globConv, testConv)
-            obj.assertEqual(pyh.dupCoords, testArr)
+            assert globConv == testConv
+            self.assertNumpyArrayEqual(pyh.dupCoords, testArr)
 
         partitionList = [[7,13,-1],
                          [11,23,48,-1],
@@ -281,14 +294,14 @@ class testMesh(unittest.TestCase):
                 combinedDict[part] = (src, dest, copyPyh.cells)
             storeObj(testFile, combinedDict)
 
-        def testFunc(obj, pyh, testDict, part):
+        def testFunc(self, pyh, testDict, part):
             testSrc, testDest, testArr = testDict[part]
             # remap vertices is a destructive op, need a fresh new copy every time
             copyPyh = copy.deepcopy(pyh)
             src, dest = copyPyh.RemapVertices()
-            obj.assertEqual(src, testSrc)
-            obj.assertEqual(dest, testDest)
-            obj.assertEqual(copyPyh.cells, testArr)
+            assert src == testSrc
+            assert dest == testDest
+            self.assertNumpyArrayEqual(copyPyh.cells, testArr)
 
         partitionList = [[3,13,18,-1],
                          [35,38,43,-1],
@@ -296,13 +309,14 @@ class testMesh(unittest.TestCase):
         self.commonPartitionSetup(meshFileList, vertexMapFileList, partitionList, replaceFunc, testFunc)
 
     def compareClasses(self, first, second, msg=None):
-        self.assertEqual(type(first), type(second), msg=msg)
+        assert type(first) == type(second), msg
         try:
             type(vars(first)) is dict
         except:
-            self.assertEqual(first, second, msg=msg)
+            assert first == second, msg
         else:
-            for i in vars(first).keys():
+            for i, j in zip(vars(first).keys(), vars(second).keys()):
+                assert i == j, msg
                 try:
                     type(vars(vars(first)[i])) is dict
                 except:
@@ -310,8 +324,10 @@ class testMesh(unittest.TestCase):
                     if type(vars(first)[i]) is list:
                         for f, s in zip(vars(first)[i], vars(second)[i]):
                             self.compareClasses(f, s, msg=msg)
+                    elif type(vars(first)[i]) is np.ndarray:
+                        self.assertNumpyArrayEqual(vars(first)[i], vars(second)[i], msg)
                     else:
-                        self.assertEqual(vars(first)[i], vars(second)[i], msg=msg)
+                        assert vars(first)[i] == vars(second)[i], msg
                 else:
                     self.compareClasses(vars(first)[i], vars(second)[i], msg=msg)
 
@@ -325,14 +341,14 @@ class testMesh(unittest.TestCase):
                 combinedDict[part] = copyPyh.WriteMesh(None, returnMesh=True)
             storeObj(testFile, combinedDict)
 
-        def testFunc(obj, pyh, testDict, part):
+        def testFunc(self, pyh, testDict, part):
             testMesh = testDict[part]
             # Full stack is obviously destructive
             copyPyh = copy.deepcopy(pyh)
             copyPyh.GenerateElements()
             mesh = copyPyh.WriteMesh(None, returnMesh=True)
-            #obj.assertEqual(mesh, testMesh)
-            obj.compareClasses(mesh, testMesh)
+            #self.assertEqual(mesh, testMesh)
+            self.compareClasses(mesh, testMesh)
 
         partitionList = [[9,16,23,-1],
                          [10,16,34,-1],
@@ -340,4 +356,4 @@ class testMesh(unittest.TestCase):
         self.commonPartitionSetup(meshFileList, outputMeshFileList, partitionList, replaceFunc, testFunc)
 
 if __name__ == '__main__':
-    nose2.main(plugins=["pyhesive.test.plugin"], verbosity=9)
+    pytest.main()
