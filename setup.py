@@ -45,7 +45,9 @@ setuptools.setup(
     python_requires=">=3.4",
     tests_require = [
         "pytest",
-        "pytest-xdist"
+        "pytest-xdist",
+        "pytest-cov",
+        "black",
     ],
     test_suite="pyhesive.test"
 )

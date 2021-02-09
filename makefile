@@ -1,20 +1,21 @@
 LOCDIR           = ./
 PACKAGE_ROOT     = $(addprefix $(LOCDIR), pyhesive)
 TESTDIR          = $(addprefix $(PACKAGE_ROOT), test)
-PACKAGE_DIRS     = build dist pyhesive.egg-info
 PYTHON3          = python3
 VENV_DIRS        = venv
-PYPACKAGE_DIRS  := $(addprefix $(LOCDIR), $(PACKAGE_DIRS))
 PYVENV_DIRS     := $(addprefix $(LOCDIR), $(VENV_DIRS))
 
-.PHONY: test clean clean-package clean-venv $(PYPACKAGE_DIRS) $(PYVENV_DIRS) profile
+.PHONY: test clean clean-build clean-venv clean-pyc clean-pytest $(PYVENV_DIRS) profile
+
+style:
+	@black --line-length=100 ./pyhesive/
 
 profile:
 	-@cd $(LOCDIR)bin && \
 	$(PYTHON3) -m cProfile -o pyhesive.prof ./pyhesive-insert $(PROFILE_ARGS) && \
 	snakeviz pyhesive.prof
 
-package:
+package: clean
 	@$(PYTHON3) setup.py sdist bdist_wheel
 
 test-upload: package
@@ -55,15 +56,25 @@ test: create-venv
 	@echo "               All Tests Completed Successfully"
 	@echo "==================================================================="
 
-clean-package: $(PYPACKAGE_DIRS)
+clean-pyc:
+	-find . -name '*.pyc' -exec rm -f {} +
+	-find . -name '*.pyo' -exec rm -f {} +
+	-find . -name '*~' -exec rm -f {} +
+	-find . -name '__pycache__' -exec rm -rf {} +
 
-$(PYPACKAGE_DIRS):
-	-${RM} -r $@
+clean-build:
+	-rm -rf build/
+	-rm -rf dist/
+	-rm -rf .eggs/
+	-find . -name '*.egg-info' -exec rm -rf {} +
+	-find . -name '*.egg' -exec rm -f {} +
+
+clean-pytest:
+	-rm -rf .pytest_cache/
 
 clean-venv: $(PYVENV_DIRS)
 
 $(PYVENV_DIRS):
 	-${RM} -r $@
 
-clean: clean-package clean-venv
-	-${RM} -r $(LOCDIR)pyhesive/__pycache__
+clean: clean-build clean-venv clean-pyc clean-pytest

@@ -11,9 +11,11 @@ from scipy import sparse
 strm = io.StringIO()
 perfFile = None
 
+
 def pause():
     programPause = input("Press the <ENTER> key to continue...")
     print("Moving on...")
+
 
 def timeFunc(reps):
     def decorator(func):
@@ -23,9 +25,15 @@ def timeFunc(reps):
             repeat = 10
             r = t.repeat(repeat, reps)
             best, worst = min(r), max(r)
-            avg = sum(r)/repeat
-            print("{repeat} sets of {reps} loops. AVG: {avg:.3g} usec/loop BEST: {best:.3g} usec/loop WORST: {worst:.3g} usec/loop".format(**vars()))
+            avg = sum(r) / repeat
+            print(
+                "{repeat} sets of {reps} loops. AVG: {avg:.3g} usec/loop BEST: {best:.3g} usec/loop WORST: {worst:.3g} usec/loop".format(
+                    **vars()
+                )
+            )
+
         return wraps
+
     return decorator
 
 
@@ -33,20 +41,25 @@ def finalizeProfile(fname):
     with open(fname, "w+") as perfFile:
         perfFile.write(strm.getvalue())
 
+
 def profileFunc(func):
     @functools.wraps(func)
     def wraps(*args, **kwargs):
-        if not args[0].perf: return func(*args, **kwargs)
-        strm.write("-------- FUNC "+func.__name__+" -----------------------\n")
+        if not args[0].perf:
+            return func(*args, **kwargs)
+        strm.write("-------- FUNC " + func.__name__ + " -----------------------\n")
         profiler = cProfile.Profile()
         retval = profiler.runcall(func, *args, **kwargs)
         stats = pstats.Stats(profiler, stream=strm)
-        stats.strip_dirs().sort_stats('cumtime').print_stats(50)
+        stats.strip_dirs().sort_stats("cumtime").print_stats(50)
         return retval
+
     return wraps
 
+
 def l2s(inlist):
-    return ', '.join(map(str, inlist))
+    return ", ".join(map(str, inlist))
+
 
 def flatten(inlist):
     return [item for sublist in inlist for item in sublist]

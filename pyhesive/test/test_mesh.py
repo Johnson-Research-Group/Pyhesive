@@ -5,15 +5,22 @@ Created on Tue Feb  2 10:17:49 2021
 
 @author: jacobfaibussowitsch
 """
-import sys, os, meshio, pickle, scipy, argparse, copy, unittest, pytest
-import numpy as np
+import sys
+import os
+import meshio
+import pickle
+import scipy
+import copy
+import unittest
+import pytest
 import re
+import numpy as np
 
 try:
     import pyhesive
 except ModuleNotFoundError:
-    # silly pythonpath finagling in case someone runs this from cloning the git repo
-    # rather than installing it as a package
+    # silly pythonpath finagling in case someone runs this from cloning the
+    # git repo rather than installing it as a package
     sys.path.append(os.path.realpath(os.path.join(os.getcwd(), "..", "..")))
     import pyhesive
 
@@ -57,12 +64,20 @@ closureDictFileList = [simpleClosureDictFile, smallCubeClosureDictFile, mediumCu
 simpleBoundaryDictFile = os.path.join(binDir, "simpleBoundary.pkl")
 smallCubeBoundaryDictFile = os.path.join(binDir, "smallCubeBoundary.pkl")
 mediumCubeBoundaryDictFile = os.path.join(binDir, "mediumCubeBoundary.pkl")
-boundaryDictFileList = [simpleBoundaryDictFile, smallCubeBoundaryDictFile, mediumCubeBoundaryDictFile]
+boundaryDictFileList = [
+    simpleBoundaryDictFile,
+    smallCubeBoundaryDictFile,
+    mediumCubeBoundaryDictFile,
+]
 
 simpleGlobConvDictFile = os.path.join(binDir, "simpleGlobConv.pkl")
 smallCubeGlobConvDictFile = os.path.join(binDir, "smallCubeGlobConv.pkl")
 mediumCubeGlobConvDictFile = os.path.join(binDir, "mediumCubeGlobConv.pkl")
-globConvDictFileList = [simpleGlobConvDictFile, smallCubeGlobConvDictFile, mediumCubeGlobConvDictFile]
+globConvDictFileList = [
+    simpleGlobConvDictFile,
+    smallCubeGlobConvDictFile,
+    mediumCubeGlobConvDictFile,
+]
 
 simpleVertexMapFile = os.path.join(binDir, "simpleVertexMap.pkl")
 smallCubeVertexMapFile = os.path.join(binDir, "smallVertexMap.pkl")
@@ -76,55 +91,45 @@ outputMeshFileList = [simpleOutputMeshFile, smallCubeOutputMeshFile, mediumCubeO
 
 pickleProtocol = 4
 
-def pytest_generate_tests(metafunc):
-    '''
-    Insert command line options to classes that have them
-    '''
-    replace = metafunc.config.getoption("pyhesive_replace")
-    # check if this function is in a test-class that needs the cmd-line args
-    if replace and hasattr(metafunc.cls, "replaceFiles"):
-        # now set the cmd-line args to the test class
-        metafunc.cls.replaceFiles = bool(replace)
 
 def storeMatrix(filename, mat):
     scipy.sparse.save_npz(filename, mat, compressed=True)
     print("Wrote mat %s to file %s" % (mat.__class__, filename))
 
+
 def loadMatrix(filename, format=None):
     mat = scipy.sparse.load_npz(filename)
     return mat.asformat(format, copy=False)
 
+
 def storeObj(filename, obj):
-    with open(filename, 'wb') as f:
+    with open(filename, "wb") as f:
         # protocol 4 since python3.4
         pickle.dump(obj, f, protocol=pickleProtocol)
         print("Wrote object %s to file %s" % (obj.__class__, filename))
 
+
 def loadObj(filename):
-    with open(filename, 'rb') as f:
+    with open(filename, "rb") as f:
         return pickle.load(f)
 
+
 def makeSingleton():
-    points = [
-        [0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0],
-        [1.0, 1.0, 0.0]
-    ]
+    points = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 1.0, 0.0]]
     cells = [("tetra", [[0, 1, 2, 3]])]
     return meshio.Mesh(points, cells)
 
+
+@pytest.fixture(scope="class")
+def setReplaceFiles(request, pytestconfig):
+    request.cls.replaceFiles = pytestconfig.getoption("pyhesive_replace")
+
+
+@pytest.mark.usefixtures("setReplaceFiles")
 class testMesh(unittest.TestCase):
     replaceFiles = False
 
-    def setUp(self, argList=sys.argv):
-        '''
-        parser = argparse.ArgumentParser(description="Customize test harness", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        parser.add_argument("-RRR", "--REPLACE", help="replace existing diff files", dest="replaceFiles", action='store_true')
-        parser.set_defaults(replaceFiles=False)
-        args, unknown = parser.parse_known_args(args=argList)
-        self.replaceFiles = args.replaceFiles
-        '''
+    def setUp(self):
         self.addTypeEqualityFunc(np.ndarray, self.assertNumpyArrayEqual)
 
     def assertNumpyArrayEqual(self, first, second, msg=None):
@@ -143,7 +148,7 @@ class testMesh(unittest.TestCase):
     def test_createFromMeshIO(self):
         mesh = makeSingleton()
         with pyhesive.Mesh(mesh) as pyh:
-            assert pyh.cType == 'tetra'
+            assert pyh.cType == "tetra"
             assert pyh.cDim == 4
             assert len(pyh.cells) == 1
             assert len(pyh.coords) == 4
@@ -151,7 +156,7 @@ class testMesh(unittest.TestCase):
 
     def test_createFromFile(self):
         with pyhesive.Mesh.fromFile(smallCubeMeshFile) as pyh:
-            assert pyh.cType == 'tetra'
+            assert pyh.cType == "tetra"
             assert pyh.cDim == 4
             assert len(pyh.cells) == 200
             assert len(pyh.coords) == 90
@@ -159,9 +164,12 @@ class testMesh(unittest.TestCase):
 
     def test_Partition(self):
         def testLogWarn(self, pyh, itr):
-            with self.assertLogs(pyh.log, level='WARNING') as cm:
+            with self.assertLogs(pyh.log, level="WARNING") as cm:
                 pyh.PartitionMesh(itr)
-                assert re.search(r"(Number of partitions )(\d+)( > num cells)\s(\d+)(, using num cells instead)", *cm.output)
+                assert re.search(
+                    r"(Number of partitions )(\d+)( > num cells)\s(\d+)(, using num cells instead)",
+                    *cm.output
+                )
 
         def testSuccess(self, pyh, itr):
             pyh.PartitionMesh(itr)
@@ -178,10 +186,12 @@ class testMesh(unittest.TestCase):
                     with self.subTest(numPart=numPart):
                         func(self, pyh, numPart)
 
-        partListSuccess = [[-1,0,1,10,20],
-                          [-1,0,1,10,20,30,40,50],
-                          [-1,0,1,10,20,30,40,50,1000]]
-        partListLogWarn = [[25],[201],[13000]]
+        partListSuccess = [
+            [-1, 0, 1, 10, 20],
+            [-1, 0, 1, 10, 20, 30, 40, 50],
+            [-1, 0, 1, 10, 20, 30, 40, 50, 1000],
+        ]
+        partListLogWarn = [[25], [201], [13000]]
         for meshFile, partSuccess, partWarn in zip(meshFileList, partListSuccess, partListLogWarn):
             with self.subTest(meshFile=meshFile, retType="sucess"):
                 testBase(self, meshFile, partSuccess, testSuccess)
@@ -195,7 +205,7 @@ class testMesh(unittest.TestCase):
                     if self.replaceFiles:
                         storeMatrix(matFile, pyh.adjMat.tocsr())
                         continue
-                    testMat = loadMatrix(matFile, format='lil')
+                    testMat = loadMatrix(matFile, format="lil")
                     assert testMat.shape == pyh.adjMat.shape
                     for i in range(len(pyh.cells)):
                         with self.subTest(row=i):
@@ -211,9 +221,11 @@ class testMesh(unittest.TestCase):
             with self.subTest(meshFile=meshFile):
                 with pyhesive.Mesh.fromFile(meshFile) as pyh:
                     if self.replaceFiles:
-                        combinedDict = {subDictAdj : pyh.cAdj,
-                                        subDictBdC : pyh.bdCells,
-                                        subDictBdF : pyh.bdFaces}
+                        combinedDict = {
+                            subDictAdj: pyh.cAdj,
+                            subDictBdC: pyh.bdCells,
+                            subDictBdF: pyh.bdFaces,
+                        }
                         storeObj(closureDictFile, combinedDict)
                         continue
                     testDict = loadObj(closureDictFile)
@@ -224,7 +236,9 @@ class testMesh(unittest.TestCase):
                     with self.subTest(subDict=subDictBdF):
                         assert pyh.bdFaces == testDict[subDictBdF]
 
-    def commonPartitionSetup(self, meshFileList, testFileList, partitionList, replaceFunc, testFunc):
+    def commonPartitionSetup(
+        self, meshFileList, testFileList, partitionList, replaceFunc, testFunc
+    ):
         for meshFile, testFile, partList in zip(meshFileList, testFileList, partitionList):
             with self.subTest(meshFile=meshFile, partList=partList):
                 with pyhesive.Mesh.fromFile(meshFile) as pyh:
@@ -240,7 +254,7 @@ class testMesh(unittest.TestCase):
 
     def test_LocalBoundaryFaces(self):
         def replaceFunc(pyh, testFile, partList):
-            combinedDict= dict()
+            combinedDict = dict()
             for part in partList:
                 pyh.PartitionMesh(part)
                 combinedDict[part] = tuple(bdface for bdface in pyh.GenerateLocalBoundaryFaces())
@@ -253,10 +267,10 @@ class testMesh(unittest.TestCase):
                         assert cell == testCell
                         assert bdFaceDict[cell] == testSubPart[cell]
 
-        partitionListSuccess = [[10,20,-1],
-                                [10,30,50,-1],
-                                [20,500,1000,-1]]
-        self.commonPartitionSetup(meshFileList, boundaryDictFileList, partitionListSuccess, replaceFunc, testFunc)
+        partitionListSuccess = [[10, 20, -1], [10, 30, 50, -1], [20, 500, 1000, -1]]
+        self.commonPartitionSetup(
+            meshFileList, boundaryDictFileList, partitionListSuccess, replaceFunc, testFunc
+        )
 
     def test_GlobalConversion(self):
         def replaceFunc(pyh, testFile, partList):
@@ -278,10 +292,10 @@ class testMesh(unittest.TestCase):
             assert globConv == testConv
             self.assertNumpyArrayEqual(pyh.dupCoords, testArr)
 
-        partitionList = [[7,13,-1],
-                         [11,23,48,-1],
-                         [87,366,1234,-1]]
-        self.commonPartitionSetup(meshFileList, globConvDictFileList, partitionList, replaceFunc, testFunc)
+        partitionList = [[7, 13, -1], [11, 23, 48, -1], [87, 366, 1234, -1]]
+        self.commonPartitionSetup(
+            meshFileList, globConvDictFileList, partitionList, replaceFunc, testFunc
+        )
 
     def test_RemapVertices(self):
         def replaceFunc(pyh, testFile, partList):
@@ -303,10 +317,10 @@ class testMesh(unittest.TestCase):
             assert dest == testDest
             self.assertNumpyArrayEqual(copyPyh.cells, testArr)
 
-        partitionList = [[3,13,18,-1],
-                         [35,38,43,-1],
-                         [123,745,999,-1]]
-        self.commonPartitionSetup(meshFileList, vertexMapFileList, partitionList, replaceFunc, testFunc)
+        partitionList = [[3, 13, 18, -1], [35, 38, 43, -1], [123, 745, 999, -1]]
+        self.commonPartitionSetup(
+            meshFileList, vertexMapFileList, partitionList, replaceFunc, testFunc
+        )
 
     def compareClasses(self, first, second, msg=None):
         assert type(first) == type(second), msg
@@ -347,13 +361,13 @@ class testMesh(unittest.TestCase):
             copyPyh = copy.deepcopy(pyh)
             copyPyh.GenerateElements()
             mesh = copyPyh.WriteMesh(None, returnMesh=True)
-            #self.assertEqual(mesh, testMesh)
             self.compareClasses(mesh, testMesh)
 
-        partitionList = [[9,16,23,-1],
-                         [10,16,34,-1],
-                         [234,555,812,-1]]
-        self.commonPartitionSetup(meshFileList, outputMeshFileList, partitionList, replaceFunc, testFunc)
+        partitionList = [[9, 16, 23, -1], [10, 16, 34, -1], [234, 555, 812, -1]]
+        self.commonPartitionSetup(
+            meshFileList, outputMeshFileList, partitionList, replaceFunc, testFunc
+        )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     pytest.main()
