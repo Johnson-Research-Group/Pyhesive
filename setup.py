@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="pyhesive", # Replace with your own username
-    version="0.2.1",
+    version="0.2.2",
     author="Jacob Faibussowitsch",
     author_email="jacob.fai@gmail.com",
     description="Insert cohesive elements into any mesh",
@@ -48,6 +48,7 @@ setuptools.setup(
         "pytest-xdist",
         "pytest-cov",
         "black",
+        "snakeviz",
     ],
     test_suite="pyhesive.test"
 )

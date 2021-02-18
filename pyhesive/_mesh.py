@@ -154,14 +154,13 @@ class Mesh:
 
     def BuildAdjacencyMatrix(self, cells, format="lil", v2v=False):
         def matsize(a):
-            sum = 0
             if isinstance(a, sparse.csr_matrix) or isinstance(a, sparse.csc_matrix):
-                sum = a.data.nbytes + a.indptr.nbytes + a.indices.nbytes
+                return a.data.nbytes + a.indptr.nbytes + a.indices.nbytes
             elif isinstance(a, sparse.lil_matrix):
-                sum = a.data.nbytes + a.rows.nbytes
+                return a.data.nbytes + a.rows.nbytes
             elif isinstance(a, sparse.coo_matrix):
-                sum = a.col.nbytes + a.row.nbytes + a.data.nbytes
-            return sum
+                return a.col.nbytes + a.row.nbytes + a.data.nbytes
+            return 0
 
         ne = len(cells)
         elIds = np.empty((ne, len(cells[0])), dtype=np.intp)
@@ -302,7 +301,7 @@ class Mesh:
         gConv = dict()
         for part, (bdFaces, gConv) in zip(self.partitions, self.GenerateGlobalConversion(gConv)):
             partConv = np.array(
-                [[gConv[x][0][0] if x in gConv else x for x in cell] for cell in self.cells[part]]
+                [[gConv[x][0][0] if x in gConv else x for x in c] for c in self.cells[part]]
             )
             try:
                 self.cells[part] = partConv

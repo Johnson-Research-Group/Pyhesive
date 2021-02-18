@@ -9,6 +9,7 @@ PYVENV_DIRS     := $(addprefix $(LOCDIR), $(VENV_DIRS))
 
 style:
 	@black --line-length=100 ./pyhesive/
+	@black --line-length=100 ./bin/pyhesive-insert
 
 profile:
 	-@cd $(LOCDIR)bin && \
