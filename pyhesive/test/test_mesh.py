@@ -158,8 +158,8 @@ class testMesh(unittest.TestCase):
         with pyhesive.Mesh.fromFile(smallCubeMeshFile) as pyh:
             assert pyh.cType == "tetra"
             assert pyh.cDim == 4
-            assert len(pyh.cells) == 200
-            assert len(pyh.coords) == 90
+            assert len(pyh.cells) == 100
+            assert len(pyh.coords) == 45
             assert pyh.faceDim == 3
 
     def test_Partition(self):
