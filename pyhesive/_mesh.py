@@ -331,3 +331,12 @@ class Mesh:
         if self.log.isEnabledFor(logging.DEBUG):
             [self.log.debug("Created new cohesive element %s" % (e)) for e in self.cohesiveCells]
         self.coords = np.vstack((self.coords, self.dupCoords))
+
+    def VerifyCohesiveMesh(self):
+      if len(self.cohesiveCells):
+        print("verifying")
+        cohesiveSet = set(frozenset(cell) for cell in self.cohesiveCells)
+        print(len(cohesiveSet),len(self.cohesiveCells))
+        if len(cohesiveSet) != len(self.cohesiveCells):
+          raise RuntimeError("There are duplicate cohesive cells!")
+      return

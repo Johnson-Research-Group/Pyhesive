@@ -88,6 +88,7 @@ def parseArgs(argv):
     parser.add_argument(
         "-p", "--prune", help="prune dangling vertices", dest="prune", action="store_true"
     )
+    parser.add_argument("--verify", help="Perform verification tests after inserting cohesive elements", action="store_true")
     parser.set_defaults(prune=False, vLevel=40)
     args = parser.parse_args(args=argv)
     if args.meshFileIn is not None:
@@ -113,6 +114,8 @@ def main(argv=None):
     ) as pyh:
         pyh.PartitionMesh(args.numPart)
         pyh.GenerateElements()
+        if args.verify:
+          pyh.VerifyCohesiveMesh()
         pyh.WriteMesh(args.meshFileOut, args.meshFormatOut, args.prune)
 
 
