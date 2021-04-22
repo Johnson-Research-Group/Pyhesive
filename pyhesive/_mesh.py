@@ -174,20 +174,13 @@ class Mesh(object):
           self.log.debug("cell %d marked on boundary" % (rowindex))
           bdcells.append(rowindex)
         # for all of my neighbors, what faces do we have in common?
-        intFaces = [set(cells[rowindex]).intersection(cells[c]) for c in adj[rowindex]]
+        cellSet  = set(cells[rowindex])
+        intFaces = [cellSet.intersection(cells[c]) for c in adj[rowindex]]
         # all possible faces of mine
-        #if faceDim == 3:
-        #  comb = list(map(set,combinations(cells[rowindex],faceDim)))
-        #if faceDim == 4:
-        if 1:
-          seen = set()
-          seenadd = seen.add # pull function lookup out of the look for performance
-          comb = [item for item in map(tuple,combinations(cells[rowindex],faceDim)) if not item in seen and not seenadd(item)]
-        else:
-          raise NotImplementedError("Cannot handle meshes with %d vertices per face" % (faceDim))
-        # THIS MAY VERY WELL BE COMPLETELY BROKEN
-        # I currently just take a set, __completely throwing out any ordering information
-        bdf = [face for face in comb if set(face) not in intFaces]
+        seen    = set()
+        seenadd = seen.add # pull function lookup out of the loop for performance
+        comb    = [item for item in map(tuple,combinations(cells[rowindex],faceDim)) if not item in seen and not seenadd(item)]
+        bdf     = [face for face in comb if set(face) not in intFaces]
         bdfaces.append(bdf)
         if self.log.isEnabledFor(logging.DEBUG):
           for f in bdf:
