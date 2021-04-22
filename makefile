@@ -51,7 +51,8 @@ test-install: create-venv
 
 test: create-venv
 	@. $(LOCDIR)venv/bin/activate && \
-	pip3 install --upgrade pytest pytest-xdist pyhesive && \
+	pip3 install -e . && \
+	pip3 install --upgrade pytest pytest-xdist && \
 	$(PYTHON3) -m pytest $(PYTEST_ARGS)
 	@echo "==================================================================="
 	@echo "               All Tests Completed Successfully"
