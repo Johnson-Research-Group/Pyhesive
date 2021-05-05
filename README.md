@@ -112,11 +112,17 @@ To get a local copy up and running follow these simple steps.
   ```python
   import pyhesive
 
-  # mesh created with meshio
-  with pyhesive.Mesh(mesh) as msh:
-	  pyhesMesh.PartitionMesh()
-	  pyhesMesh.GenerateElements()
-	  pyhesMesh.WriteMesh()
+  # create the mesh from plain old data
+  pyh = pyhesive.Mesh.fromPOD(points,cells)
+
+  # create partitions
+  pyh.partitionMesh(numberOfPartitions)
+
+  # insert elements between partitions
+  pyh.insertElements()
+
+  # write to file, for example in abaqus .inp format
+  pyh.writeMesh(outputFilename,meshFormatOut="abaqus")
   ```
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
