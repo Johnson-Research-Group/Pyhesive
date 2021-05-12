@@ -323,8 +323,6 @@ class Mesh(object):
         # assign, throws ValueError if partition is empty
         self.cellData.cells[part] = convertedPartition
       except ValueError:
-        import ipdb
-        ipdb.set_trace()
         self.log.debug("no vertices to update")
         continue
       # for every face in the list of boundary faces, convert the boundary face vertex as
