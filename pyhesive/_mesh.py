@@ -7,7 +7,7 @@ Created on Mon Nov  9 17:44:24 2020
 """
 from ._utils import flatten,getLogLevel,getLogStream
 
-import logging,meshio,pymetis,collections,scipy
+import sys,logging,meshio,pymetis,collections,scipy
 import numpy as np
 from scipy import sparse
 
@@ -158,7 +158,10 @@ class Mesh(object):
     cDim     = len(elIds[0])
     v2c      = scipy.sparse.coo_matrix((np.ones((ne*cDim,),dtype=np.intp),(cells.ravel(),elIds.ravel(),),))
     v2c      = v2c.tocsr(copy=False)
-    c2c      = v2c.T @ v2c
+    if sys.version_info <= (3,5):
+      c2c = v2c.T @ v2c
+    else:
+      c2c = v2c.T.__matmul__(v2c)
     self.log.debug("c2c mat size %g kB",matsize(c2c)/(1024**2))
     c2c = c2c.asformat(format,copy=False)
     self.log.debug("c2c mat size after compression %g kB",matsize(c2c)/(1024**2))

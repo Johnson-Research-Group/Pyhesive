@@ -7,10 +7,6 @@ PYVENV_DIRS     := $(addprefix $(LOCDIR), $(VENV_DIRS))
 
 .PHONY: test clean clean-build clean-venv clean-pyc clean-pytest $(PYVENV_DIRS) profile
 
-style:
-	@black --line-length=100 ./pyhesive/
-	@black --line-length=100 ./bin/pyhesive-insert
-
 profile:
 	-@cd $(LOCDIR)bin && \
 	$(PYTHON3) -m cProfile -o pyhesive.prof ./pyhesive-insert $(PROFILE_ARGS) && \
@@ -49,10 +45,14 @@ test-install: create-venv
 	@echo "          All Install Tests Completed Successfully"
 	@echo "==================================================================="
 
+vermin:
+	@vermin ./pyhesive ./bin
+
 test: create-venv
 	@. $(LOCDIR)venv/bin/activate && \
-	pip3 install -e . && \
-	pip3 install --upgrade pytest pytest-xdist && \
+	pip3 install --upgrade pip setuptools && \
+	pip3 install -e .[test] && \
+	vermin ./pyhesive ./bin && \
 	$(PYTHON3) -m pytest $(PYTEST_ARGS)
 	@echo "==================================================================="
 	@echo "               All Tests Completed Successfully"
