@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+
+from glob import glob
+
+pytest_plugins = [
+  fixture.replace("/",".").replace("fixtures.py","fixtures") for fixture in glob("*/test/fixtures.py")
+]
+
 def pytest_addoption(parser):
   parser.addoption("--pyhesive-replace", action="store_true", help="replace output files during tests")
 
