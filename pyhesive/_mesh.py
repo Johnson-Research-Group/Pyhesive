@@ -6,64 +6,19 @@ Created on Mon Nov  9 17:44:24 2020
 @author: jacobfaibussowitsch
 """
 from ._utils import flatten,getLogLevel,getLogStream
+from ._cellset import CellSet
+from ._partitioninterface import PartitionInterface
 
-import sys,logging,meshio,pymetis,collections,scipy
-import numpy as np
+import logging
+import meshio
+import pymetis
+import collections
+import scipy
 from scipy import sparse
-
-typeMap = {
-  "triangle"   : [2,np.array([[0,1],[1,2],[2,0]]),None],
-  "tetra"      : [3,np.array([[2,1,0],[2,0,3],[2,3,1],[0,1,3]]),"wedge"],
-  "hexahedron" : [3,np.array([[0,4,7,3],[0,1,5,4],[0,3,2,1],[6,7,4,5],[2,3,7,6],[2,6,5,1]]),"hexahedron"],
-  "wedge"      : [3,None,"wedge"],
-  "wedge12"    : [3,None,"wedge12"],
-}
-
-CellSetNamedTuple = collections.namedtuple("CellSet",["type","cells","dim","faceIndices","cohesiveType"])
-class CellSet(CellSetNamedTuple):
-  __slots__ = ()
-
-  @classmethod
-  def fromPOD(cls,ctype,cells):
-    dim,faceIndices,cohesiveType = typeMap[ctype]
-    return cls(ctype,cells,dim,faceIndices,cohesiveType)
-
-  @classmethod
-  def fromCellBlock(cls,cellblock):
-    assert isinstance(cellblock,meshio.CellBlock)
-    return cls.fromPOD(cellblock.type,cellblock.data)
-
-  def __len__(self):
-    return len(self.cells)
-
-  def __getitem__(self,key):
-    return self.fromPOD(self.type,self.cells[key])
-
-  def __ne__(self,other):
-    return not self.__eq__(other)
-
-
-  def __eq__(self,other):
-    if isinstance(other,CellSet):
-      if self.type != other.type:
-        return False
-      if self.cohesiveType != other.cohesiveType:
-        return False
-      if self.dim != other.dim:
-        return False
-      if not np.array_equiv(self.faceIndices,other.faceIndices):
-        return False
-      if not np.array_equiv(self.cells,other.cells):
-        return False
-      return True
-    return NotImplemented
-
-PartitionInterfaceNamedTuple = collections.namedtuple("PartitionInteface",["ownFaces","mirrorIds","mirrorVertices"])
-class PartitionInterface(PartitionInterfaceNamedTuple):
-  __slots__ = ()
+import numpy as np
 
 class Mesh(object):
-  def __init__(self,mesh):
+  def __initLogger(self):
     slog = logging.getLogger(self.__class__.__name__)
     verbosity = getLogLevel()
     slog.setLevel(verbosity)
@@ -75,7 +30,13 @@ class Mesh(object):
     formatter    = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s")
     ch.setFormatter(formatter)
     slog.addHandler(ch)
-    self.log = slog
+    return slog
+
+  def __assertPartitioned(self):
+    assert hasattr(self,"partitions"),"Must partition mesh first"
+    return
+
+  def __init__(self,mesh):
     if isinstance(mesh,meshio.Mesh):
       try:
         self.cellData = CellSet.fromCellBlock(mesh.cells[-1])
@@ -88,8 +49,11 @@ class Mesh(object):
     else:
       raise ValueError("unknown type of input mesh {}".format(type(mesh)))
     self.cohesiveCells = None
+    self.log = self.__initLogger();
     self.log.info("number of cells %d, vertices %d",len(self.cellData.cells),len(self.coords))
-    self.log.info("cell dimension %d, type %s, number of faces per vertex %d",self.cellData.dim,self.cellData.type,len(self.cellData.faceIndices[0]))
+    self.log.info("cell dimension %d, type %s, number of faces per vertex %d",
+                  self.cellData.dim,self.cellData.type,len(self.cellData.faceIndices[0]))
+    return
 
   @classmethod
   def fromFile(cls,filename,formatIn=None):
@@ -125,8 +89,22 @@ class Mesh(object):
       traceback.print_exception(exc_type,exc_value,tb)
     return
 
-  def __assertPartitioned(self):
-    assert hasattr(self,"partitions"),"Must partition mesh first"
+  def writeMesh(self,meshFileOut,meshFormatOut=None,prune=False,returnMesh=False):
+    cells = [(self.cellData.type,self.cellData.cells)]
+    if self.cohesiveCells is not None:
+      self.log.info("generated %d cohesive elements of type '%s' and %d duplicated vertices",
+                    len(self.cohesiveCells),self.cohesiveCells.type,len(self.dupCoords))
+      cells.append((self.cohesiveCells.type,self.cohesiveCells.cells))
+    else:
+      self.log.info("generated no cohesive elements")
+    meshOut = meshio.Mesh(self.coords,cells)
+    if prune:
+      meshOut.remove_orphaned_nodes()
+    if returnMesh:
+      return meshOut
+    else:
+      meshio.write(meshFileOut,meshOut,file_format=meshFormatOut)
+      self.log.info("wrote mesh to '%s' with format '%s'",meshFileOut,meshFormatOut)
     return
 
   def partitionMesh(self,numPart=-1):
@@ -150,27 +128,12 @@ class Mesh(object):
       membership      = np.array([x for x in range(len(self.cellData))])
       self.partitions = tuple(np.array([x]) for x in membership)
     nValid = sum(1 for p in self.partitions if len(p))
-    self.log.info("number of partitions requested %d, actual %d, average cells/partition %d",numPart,nValid,len(self.cellData)/nValid)
+    self.log.info("number of partitions requested %d, actual %d, average cells/partition %d",
+                  numPart,nValid,len(self.cellData)/nValid)
     partCountSum  = sum([len(x) for x in self.partitions])
     if partCountSum != len(self.cellData):
       raise RuntimeError("Partition cell-count sum %d != global number of cells %d" % (partCountSum,len(self.cellData)))
     return
-
-  def writeMesh(self,meshFileOut,meshFormatOut=None,prune=False,returnMesh=False):
-    cells = [(self.cellData.type,self.cellData.cells)]
-    if self.cohesiveCells is not None:
-      self.log.info("generated %d cohesive elements of type '%s' and %d duplicated vertices",len(self.cohesiveCells),self.cohesiveCells.type,len(self.dupCoords))
-      cells.append((self.cohesiveCells.type,self.cohesiveCells.cells))
-    else:
-      self.log.info("generated no cohesive elements")
-    meshOut = meshio.Mesh(self.coords,cells)
-    if prune:
-      meshOut.remove_orphaned_nodes()
-    if returnMesh:
-      return meshOut
-    else:
-      meshio.write(meshFileOut,meshOut,file_format=meshFormatOut)
-      self.log.info("wrote mesh to '%s' with format '%s'",meshFileOut,meshFormatOut)
 
   def __computePartitionVertexMap(self,partitions=None,cellSet=None):
     if hasattr(self,"partVMap"):
@@ -246,6 +209,7 @@ class Mesh(object):
     return self.partitionInterfaces
 
   def computeAdjacencyMatrix(self,cells=None,format="lil",v2v=False):
+    from sys import version_info
     def matsize(a):
       if isinstance(a,scipy.sparse.csr_matrix) or isinstance(a,scipy.sparse.csc_matrix):
         return a.data.nbytes+a.indptr.nbytes+a.indices.nbytes
@@ -263,7 +227,7 @@ class Mesh(object):
     cDim     = len(elIds[0])
     v2c      = scipy.sparse.coo_matrix((np.ones((ne*cDim,),dtype=np.intp),(cells.ravel(),elIds.ravel(),),))
     v2c      = v2c.tocsr(copy=False)
-    if sys.version_info <= (3,5):
+    if version_info <= (3,5):
       c2c = v2c.T @ v2c
     else:
       c2c = v2c.T.__matmul__(v2c)
@@ -317,7 +281,7 @@ class Mesh(object):
       self.log.debug("%d boundary face(s)",sum(len(_) for _ in bdfaces))
       return localAdjacency,bdfaces
 
-  def duplicateVertices(self,oldVertexList,globalDict,coords,partVMap,dupCoords=None):
+  def __duplicateVertices(self,oldVertexList,globalDict,coords,partVMap,dupCoords=None):
     tdict = {}
     convertableVertices = tuple(x for x in oldVertexList if x not in globalDict)
     if len(convertableVertices):
@@ -350,7 +314,7 @@ class Mesh(object):
       self.log.debug("no vertices to duplicate")
     return dupCoords,tdict
 
-  def generateGlobalConversion(self,partitions,globConvDict):
+  def __generateGlobalConversion(self,partitions,globConvDict):
     self.dupCoords,dupCoords = None,None
     try:
       for (idx,part),boundary in zip(enumerate(partitions),self.partitionInterfaces):
@@ -358,19 +322,21 @@ class Mesh(object):
         # old vertex IDs
         oldVertices = {*flatten(boundary.ownFaces)}
         # duplicate the vertices, return the duplicates new IDs
-        dupCoords,locConvDict = self.duplicateVertices(oldVertices,globConvDict,self.coords,self.partVMap,dupCoords)
+        dupCoords,locConvDict = self.__duplicateVertices(oldVertices,globConvDict,
+                                                         self.coords,self.partVMap,dupCoords)
         yield part,boundary,globConvDict
         globConvDict.update(locConvDict)
     finally:
       # fancy trickery to update the coordinates __after__ the final yield has been called
       self.dupCoords = np.array(dupCoords)
+    return
 
   def remapVertices(self):
     self.__assertPartitioned();
     sourceVertices,mappedVertices = [],[]
     facelen = len(self.cellData.faceIndices[0])
     gConv   = dict()
-    for part,boundary,gConv in self.generateGlobalConversion(self.partitions,gConv):
+    for part,boundary,gConv in self.__generateGlobalConversion(self.partitions,gConv):
       # loop through every cell in the current partition, if it contains vertices that are
       # in the global conversion map then renumber using the top of the stack
       convertedPartition = np.array([[gConv[v][0] if v in gConv else v for v in c] for c in self.cellData.cells[part]])
@@ -429,7 +395,8 @@ class Mesh(object):
   def verifyCohesiveMesh(self):
     if len(self.cohesiveCells):
       cohesiveSet = set(frozenset(cell) for cell in self.cohesiveCells.cells)
-      self.log.debug("number of unique cohesive elements %s, total number of cohesive elements %s",len(cohesiveSet),len(self.cohesiveCells))
+      self.log.debug("number of unique cohesive elements %s, total number of cohesive elements %s",
+                     len(cohesiveSet),len(self.cohesiveCells))
       if len(cohesiveSet) != len(self.cohesiveCells):
         raise RuntimeError("there are duplicate cohesive cells!")
       self.log.info("mesh seems ok")
