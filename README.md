@@ -3,6 +3,17 @@
 [![Version][version-shield]][version-url]
 [![PyVersion][pyversion-shield]][pyversion-url]
 
+
+                ____          __                 _
+               / __ \ __  __ / /_   ___   _____ (_)_   __ ___
+              / /_/ // / / // __ \ / _ \ / ___// /| | / // _ \
+             / ____// /_/ // / / //  __/(__  )/ / | |/ //  __/
+            /_/     \__, //_/ /_/ \___//____//_/  |___/ \___/
+                   /____/
+
+    A lightweight, flexible python package to insert cohesive elements
+
+
 <!-- TABLE OF CONTENTS -->
 <details open="open">
   <summary><h2 style="display: inline-block">Table of Contents</h2></summary>
@@ -24,6 +35,9 @@
 	  <ul>
 		<li><a href="#example-usage">Example Usage</a></li>
 	  </ul>
+    </li>
+	<li>
+		<a href="#testing">Testing</a>
     </li>
   </ol>
 </details>
@@ -124,6 +138,23 @@ To get a local copy up and running follow these simple steps.
   # write to file, for example in abaqus .inp format
   pyh.writeMesh(outputFilename,meshFormatOut="abaqus")
   ```
+
+### Testing
+
+To run the test suite, clone the repository and from the root folder either
+
+* 
+  ```sh
+  pytest
+  ```
+
+or
+
+* 
+  ```sh
+  make test
+  ```
+
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 [license-shield]: https://img.shields.io/pypi/l/pyhesive

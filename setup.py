@@ -7,6 +7,7 @@ test_deps = [
   "pytest",
   "pytest-xdist",
   "pytest-cov",
+  "pytest-subtests",
   "snakeviz",
   "vermin",
 ]
@@ -17,7 +18,7 @@ extras = {
 
 setuptools.setup(
   name="pyhesive",
-  version="0.2.3.3",
+  version="0.3",
   author="Jacob Faibussowitsch",
   author_email="jacob.fai@gmail.com",
   description="Insert cohesive elements into any mesh",
@@ -46,13 +47,14 @@ setuptools.setup(
     "finite elements",
     "fracture",
     "fracture mechanics",
-    "cohesive elements"
+    "cohesive elements",
+    "cohesive zone model",
   ],
   install_requires=[
     'numpy',
     'scipy',
     'meshio',
-    'pymetis'
+    'pymetis',
   ],
   python_requires=">=3.2",
   tests_require=test_deps,
