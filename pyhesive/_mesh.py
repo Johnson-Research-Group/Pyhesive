@@ -65,21 +65,37 @@ class Mesh(object):
     mesh = meshio.Mesh(points,cells)
     return cls(mesh)
 
+  def __ne__(self,other):
+    return not self.__eq__(other)
+
   def __eq__(self,other):
     if id(self) == id(other):
       return True
     if isinstance(other,Mesh):
-      print(self.cellData)
-      if self.cellData != other.cellData:
+      selfDict  = self.__dict__
+      otherDict = other.__dict__
+
+      if len(selfDict.keys()) != len(otherDict.keys()):
         return False
-      if not np.array_equiv(self.partitions,other.partitions):
-        return False
-      if not np.array_equiv(self.cellAdjacency,other.cellAdjacency):
-        return False
-      if self.bdSet != other.bdSet:
-        return False
+      selfItems = sorted(selfDict.items())
+      otherItems = sorted(otherDict.items())
+      for (selfkey,selfval),(otherkey,otherval) in zip(selfItems,otherItems):
+        try:
+          if (selfkey != otherkey) or (selfval != otherval):
+            return False
+        except ValueError:
+          if isinstance(selfval,np.ndarray):
+            if not np.array_equiv(selfval,otherval):
+              return False
+          elif scipy.sparse.issparse(selfval):
+            from common import assertScipyAllClose
+            try:
+              assertScipyAllClose(selfval,otherval)
+            except AssertionError:
+              return False
       return True
     return NotImplemented
+
   def __enter__(self):
     return self
 
@@ -110,7 +126,7 @@ class Mesh(object):
   def partitionMesh(self,numPart=-1):
     if numPart == 0:
       self.partitions = tuple()
-      return
+      return self
     if numPart == -1:
       numPart = len(self.cellData)
     elif numPart > len(self.cellData):
@@ -132,8 +148,9 @@ class Mesh(object):
                   numPart,nValid,len(self.cellData)/nValid)
     partCountSum  = sum([len(x) for x in self.partitions])
     if partCountSum != len(self.cellData):
-      raise RuntimeError("Partition cell-count sum %d != global number of cells %d" % (partCountSum,len(self.cellData)))
-    return
+      raise RuntimeError("Partition cell-count sum %d != global number of cells %d" %
+                         (partCountSum,len(self.cellData)))
+    return self
 
   def __computePartitionVertexMap(self,partitions=None,cellSet=None):
     if hasattr(self,"partVMap"):
@@ -148,7 +165,6 @@ class Mesh(object):
     return self.partVMap
 
   def __computePartitionInterface(self,partition,globalAdjacencyMatrix=None):
-    self.__assertPartitioned();
     self.__computePartitionVertexMap();
     bdfaces      = []
     cellSet      = self.cellData[partition]
@@ -196,7 +212,6 @@ class Mesh(object):
     self.log.debug("%d interface face(s)",sum(len(_) for _ in bdfaces))
     try:
     #if len(bdfaces):
-      print(bdfaces)
       f,si,sv = zip(*flatten(bdfaces))
     except ValueError:
       # ValueError: not enough values to unpack (expected 3, got 0)
@@ -204,6 +219,7 @@ class Mesh(object):
     return PartitionInterface(ownFaces=np.array(f),mirrorIds=np.array(si),mirrorVertices=np.array(sv))
 
   def __computePartitionInterfaceList(self):
+    self.__assertPartitioned();
     if not hasattr(self,"partitionInterfaces"):
       self.partitionInterfaces = [self.__computePartitionInterface(p) for p in self.partitions]
     return self.partitionInterfaces
@@ -383,14 +399,14 @@ class Mesh(object):
       sourceVertices,mappedVertices = self.remapVertices()
       cells = np.hstack((mappedVertices,sourceVertices))
       self.cohesiveCells = CellSet.fromPOD(self.cellData.cohesiveType,cells)
-      if len(self.dupCoords):
-        self.coords      = np.vstack((self.coords,self.dupCoords))
+      if self.dupCoords.shape:
+        self.coords = np.vstack((self.coords,self.dupCoords))
       else:
         self.log.debug("no coordinates were duplicated!")
       if self.log.isEnabledFor(logging.DEBUG):
         for e in self.cohesiveCells.cells:
           self.log.debug("created new cohesive element %s",e)
-    return
+    return self
 
   def verifyCohesiveMesh(self):
     if len(self.cohesiveCells):
@@ -402,4 +418,4 @@ class Mesh(object):
       self.log.info("mesh seems ok")
     else:
       self.log.info("mesh has no cohesive cells")
-    return
+    return self

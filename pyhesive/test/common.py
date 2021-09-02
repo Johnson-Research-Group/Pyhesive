@@ -18,7 +18,7 @@ elif curDir == "pyhesive":
   parentDir = os.path.basename(os.path.dirname(os.getcwd()))
   if parentDir == "pyhesive":
     # we are in pyhesive/pyhesive, i.e. the package dir
-    testRootDir = os.path.join(os.getcwd(), "test")
+    testRootDir = os.path.join(os.getcwd(),"test")
   elif "pyhesive" in os.listdir():
     # we are in root pyhesive dir
     testRootDir = os.path.join(os.getcwd(),"pyhesive","test")
@@ -52,14 +52,14 @@ def loadObj(filename):
   with open(filename, "rb") as f:
     return pickle.load(f)
 
-def scipyAllClose(A,B,rtol=1e-7,atol=1e-8):
+def assertScipyAllClose(A,B,rtol=1e-7,atol=1e-8):
   def _scipyAllCloseLil():
     assert A.shape == B.shape
     for i in range(A.get_shape()[0]):
       rowA = A.getrowview(i).toarray()
       rowB = B.getrowview(i).toarray()
       np.testing.assert_allclose(rowA,rowB,rtol=rtol,atol=atol)
-      return
+    return
 
   def _scipyAllCloseSparse():
     # If you want to check matrix shapes as well
@@ -87,6 +87,23 @@ def scipyAllClose(A,B,rtol=1e-7,atol=1e-8):
     _scipyAllCloseSparse()
   return
 
+def assertNumpyArrayEqual(self,first,second,msg=None):
+  assert type(first) == np.ndarray,msg
+  assert type(first) == type(second),msg
+  try:
+    np.testing.assert_array_almost_equal_nulp(first,second)
+  except AssertionError:
+    additionalMsg = "Locations: %s" % (np.argwhere(first!=second))
+    if msg is not None:
+      msg = "\n".join([msg,additionalMsg])
+    else:
+      msg = additionalMsg
+    pytest.fail(msg)
+
+def trygetattr(obj,attr):
+  if hasattr(obj,attr):
+    return getattr(obj,attr)
+  return
 
 def commonPartitionSetup(meshFileList,testFileList,partitionList,replaceFunc,testFunc):
   for meshFile,testFile,partList in zip(meshFileList,testFileList,partitionList):
