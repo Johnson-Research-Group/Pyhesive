@@ -1,14 +1,14 @@
 LOCDIR          := .
-PACKAGE_ROOT     = $(addprefix $(LOCDIR)/, pyhesive)
-TESTDIR          = $(addprefix $(PACKAGE_ROOT)/, test)
+PYHESIVE_DIR     = $(addprefix $(LOCDIR)/, pyhesive)
+TESTDIR          = $(addprefix $(PYHESIVE_DIR)/, test)
 PYTHON3          = python3
-VENV_DIRS        = venv
-PYVENV_DIRS     := $(addprefix $(LOCDIR), $(VENV_DIRS))
+PIP3             = $(PYTHON3) -m pip
+PYVENV_DIRS     := $(addprefix $(LOCDIR)/, venv)
 
 .PHONY: test clean clean-build clean-venv clean-pyc clean-pytest $(PYVENV_DIRS) profile
 
 help:
-	@printf "Usage: make [options] [target] (see 'make --help' for options)\n";
+	@printf "Usage: make [MAKE_OPTIONS] [target] (see 'make --help' for MAKE_OPTIONS)\n"
 	@printf ""
 	@awk '								\
 	{								\
@@ -39,6 +39,20 @@ help:
 	}'								\
 	$(MAKEFILE_LIST)
 
+## -- commonly used --
+
+## install the library from src
+install:
+	-@$(PIP3) install .
+
+## remove generated local files
+clean: clean-build clean-venv clean-pyc clean-pytest
+
+## uninstall the package (due to limitations with pip
+## does not uninstall dependencies)
+uninstall:
+	-@$(PIP3) uninstall pyhesive
+
 ## -- testing --
 
 package: clean
@@ -61,17 +75,16 @@ test-install: create-venv
 	@echo "                 Installing From TestPyPi"
 	@echo "==================================================================="
 	@. $(LOCDIR)/venv/bin/activate && \
-	pip3 install --upgrade pip setuptools && \
-	$(PYTHON3) -m pip install --index-url https://test.pypi.org/simple/ --no-deps --upgrade pyhesive && \
-	$(PYTHON3) -m pip install pyhesive && \
+	$(PIP3) install --upgrade pip setuptools && \
+	$(PIP3) install --index-url https://test.pypi.org/simple/ --no-deps --upgrade pyhesive && \
+	$(PIP3) install pyhesive && \
 	$(PYTHON3) $(TESTDIR)/testPackage.py
 	@. $(LOCDIR)/venv/bin/activate && \
 	cd $(LOCDIR)/bin && pyhesive-insert --help > /dev/null && cd - >/dev/null
 	@echo "==================================================================="
 	@echo "                   Installing From PyPi"
 	@echo "==================================================================="
-	@. $(LOCDIR)/venv/bin/activate && \
-	$(PYTHON3) -m pip install --upgrade pyhesive && \
+	@. $(LOCDIR)/venv/bin/activate && $(PIP3) install --upgrade pyhesive && \
 	$(PYTHON3) $(TESTDIR)/testPackage.py
 	@echo "==================================================================="
 	@echo "          All Install Tests Completed Successfully"
@@ -83,8 +96,8 @@ vermin:
 ## run full test-suite
 test: create-venv vermin
 	@. $(LOCDIR)/venv/bin/activate && \
-	pip3 install --upgrade pip setuptools && \
-	pip3 install -e .[test] && \
+	$(PIP3) install --upgrade pip setuptools && \
+	$(PIP3) install -e .[test] && \
 	vermin ./pyhesive ./bin && \
 	$(PYTHON3) -m pytest $(PYTEST_ARGS)
 	@echo "==================================================================="
@@ -114,8 +127,9 @@ clean-venv: $(PYVENV_DIRS)
 $(PYVENV_DIRS):
 	-${RM} -r $@
 
-## remove all generated files
-clean: clean-build clean-venv clean-pyc clean-pytest
+## install the library in development mode
+install-dev:
+	-@$(PIP3) install -e .[test]
 
 ## profile the code
 profile:
