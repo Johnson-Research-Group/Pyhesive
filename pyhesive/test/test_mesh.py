@@ -50,6 +50,7 @@ def test_computeClosure(pyhmesh,closure):
   assert bdFaces == bdFacesExpected
   return
 
+
 @pytest.mark.parametrize("mesh,partitionData",zip(meshes,meshes),indirect=True)
 def test_computePartitionVertexMap(mesh,partitionData,subtests):
   for numpart,data in partitionData.items():
@@ -59,6 +60,7 @@ def test_computePartitionVertexMap(mesh,partitionData,subtests):
       pyh._Mesh__computePartitionVertexMap()
       assert pyh.partVMap == data["partitionVertexMap"]
   return
+
 
 @pytest.mark.parametrize("mesh,partitionData",zip(meshes,meshes),indirect=True)
 def test_computePartitionInterfaces(mesh,partitionData,subtests):
@@ -76,8 +78,6 @@ def test_computePartitionInterfaces(mesh,partitionData,subtests):
 def test_FullStack(mesh,partitionData,subtests):
   pyhm = pyhesive.Mesh(mesh)
   for numpart,data in partitionData.items():
-    print(numpart)
-    print(data)
     pyh = copy.deepcopy(pyhm)
     with subtests.test(numpart=numpart):
       pyh.partitionMesh(numpart)

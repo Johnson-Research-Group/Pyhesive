@@ -3,7 +3,11 @@
 """
 @author: jacobfaibussowitsch
 """
-import sys,os
+import sys
+import os
+import argparse
+import numpy as np
+import meshio
 try:
   import pyhesive
 except ModuleNotFoundError:
@@ -12,15 +16,26 @@ except ModuleNotFoundError:
   sys.path.append(os.path.join(os.getcwd(), ".."))
   import pyhesive
 
+def checkSaneMeshioFormat(format):
+  dummyFile = os.path.abspath('deletableDummmyFile.deleteme')
+  dummyMesh = meshio.Mesh(np.empty((0,3)),[])
+  meshio.write(dummyFile,dummyMesh,file_format=format)
+  try:
+    os.remove(dummyFile)
+  except OSError as ose:
+    import errno
+    if ose.errno != errno.ENOENT: # no such file or directory
+      raise # re-raise exception if a different error occurred
+  return
+
 
 def parseArgs(argv):
-  import argparse
-  path = "<path>"
-  string = "<string>"
-  integer = "<int>"
+  path          = "<path>"
+  string        = "<string>"
+  integer       = "<int>"
   defaultFormat = "abaqus"
-  defaultName = "pyhesiveOutput_{meshname}"
-  parser = argparse.ArgumentParser(description="Insert Cohesive Elements Into Arbitrary Finite Element Mesh",formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  defaultName   = "pyhesiveOutput_{meshname}"
+  parser        = argparse.ArgumentParser(description="Insert Cohesive Elements Into Arbitrary Finite Element Mesh",formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument("-i","--input",required=True,metavar=path,help="specify the input mesh file",dest="meshFileIn")
   parser.add_argument("-b","--num-partitions",metavar=integer,default=3,const=-1,nargs="?",type=int,help="specify the number of partitions to make of the mesh, use -1 to make as many partitions as there are cells",dest="numPart")
   parser.add_argument("-o","--output",nargs="?",const=defaultName+"."+defaultFormat,default=defaultName+"."+defaultFormat,metavar=path,help="specify the output mesh file",dest="meshFileOut")
@@ -46,6 +61,8 @@ def parseArgs(argv):
   for verb in range(args.verbosity):
     if args.vLevel >= 20:
       args.vLevel -= 10
+
+  checkSaneMeshioFormat(args.meshFormatOut)
   return args
 
 def main(argv=None):
