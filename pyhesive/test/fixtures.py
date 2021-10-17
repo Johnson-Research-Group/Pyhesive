@@ -343,6 +343,8 @@ def hexOctet():
   ref_mesh_points = np.vstack((
     [np.ravel(x) for x in np.mgrid[0:3,0:3,0:3]]
   )).T.astype(mesh_points.dtype)
+  assert len(ref_mesh_points) == len(mesh_points)
+  assert not len(np.setdiff1d(ref_mesh_points,mesh_points))
   mesh = meshio.Mesh(
     mesh_points,
     [("hexahedron",np.array([
