@@ -121,8 +121,10 @@ clean-build:
 
 clean-pytest:
 	-rm -rf .pytest_cache/
+	-rm -f .coverage
 
 clean-venv: $(PYVENV_DIRS)
+	-rm -f ./pyvenv.cfg
 
 $(PYVENV_DIRS):
 	-${RM} -r $@

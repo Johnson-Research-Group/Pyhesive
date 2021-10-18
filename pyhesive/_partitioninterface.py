@@ -5,11 +5,10 @@ Created on Tue Aug 31 20:02:24 2021
 
 @author: jacobfaibussowitsch
 """
-from collections import namedtuple
 import numpy as np
+from collections import namedtuple
 
-PartitionInterfaceNamedTuple = namedtuple("PartitionInteface",["ownFaces","mirrorIds","mirrorVertices"])
-class PartitionInterface(PartitionInterfaceNamedTuple):
+class PartitionInterface(namedtuple("PartitionInteface",["ownFaces","mirrorIds","mirrorVertices"])):
   __slots__ = ()
 
   def __ne__(self,other):

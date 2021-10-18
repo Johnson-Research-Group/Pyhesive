@@ -10,21 +10,19 @@ from meshio import CellBlock
 import numpy as np
 
 typeMap = {
-  "triangle"   : [2,np.array([[0,1],[1,2],[2,0]]),None],
-  "tetra"      : [3,np.array([[2,1,0],[2,0,3],[2,3,1],[0,1,3]]),"wedge"],
-  "hexahedron" : [3,np.array([[0,4,7,3],[0,1,5,4],[0,3,2,1],[6,7,4,5],[2,3,7,6],[2,6,5,1]]),"hexahedron"],
-  "wedge"      : [3,None,"wedge"],
-  "wedge12"    : [3,None,"wedge12"],
+  "triangle"   : (2,np.array([[0,1],[1,2],[2,0]]),None),
+  "tetra"      : (3,np.array([[2,1,0],[2,0,3],[2,3,1],[0,1,3]]),"wedge"),
+  "hexahedron" : (3,np.array([[0,4,7,3],[0,1,5,4],[0,3,2,1],[6,7,4,5],[2,3,7,6],[2,6,5,1]]),"hexahedron"),
+  "wedge"      : (3,None,"wedge"),
+  "wedge12"    : (3,None,"wedge12"),
 }
 
-CellSetNamedTuple = namedtuple("CellSet",["type","cells","dim","faceIndices","cohesiveType"])
-class CellSet(CellSetNamedTuple):
+class CellSet(namedtuple("CellSet",["type","cells","dim","faceIndices","cohesiveType"])):
   __slots__ = ()
 
   @classmethod
   def fromPOD(cls,ctype,cells):
-    dim,faceIndices,cohesiveType = typeMap[ctype]
-    return cls(ctype,cells,dim,faceIndices,cohesiveType)
+    return cls(ctype,cells,*typeMap[ctype])
 
   @classmethod
   def fromCellBlock(cls,cellblock):

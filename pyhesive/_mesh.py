@@ -18,17 +18,18 @@ from scipy import sparse
 import numpy as np
 
 class Mesh(object):
+  __slots__ = ("log","cellData","coords","__dict__")
+
   def __initLogger(self):
     slog = logging.getLogger(self.__class__.__name__)
-    verbosity = getLogLevel()
-    slog.setLevel(verbosity)
+    slog.setLevel(getLogLevel())
     slog.propagate = False
-    stream = getLogStream()
-    ch = logging.StreamHandler(stream)
-    ch.setLevel(verbosity)
+    ch = logging.StreamHandler(getLogStream())
+    ch.setLevel(getLogLevel())
     ch.propagate = False
-    formatter    = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s")
-    ch.setFormatter(formatter)
+    ch.setFormatter(
+      logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s")
+    )
     slog.addHandler(ch)
     return slog
 
@@ -43,7 +44,7 @@ class Mesh(object):
       except IndexError as ie:
         raise ValueError("input mesh does not contain any cells") from ie
       self.coords = mesh.points
-    elif isinstance(mesh,Mesh):
+    elif isinstance(mesh,self.__class__):
       self.cellData = mesh.cellData
       self.coords   = mesh.coords
     else:
@@ -57,44 +58,74 @@ class Mesh(object):
 
   @classmethod
   def fromFile(cls,filename,formatIn=None):
-    mesh = meshio.read(filename,formatIn)
-    return cls(mesh)
+    return cls(meshio.read(filename,formatIn))
 
   @classmethod
   def fromPOD(cls,points,cells):
-    mesh = meshio.Mesh(points,cells)
-    return cls(mesh)
+    return cls(meshio.Mesh(points,cells))
 
   def __ne__(self,other):
     return not self.__eq__(other)
 
   def __eq__(self,other):
+    def attrEq(mine,other):
+      if type(mine) != type(other):
+        return False
+      if isinstance(mine,np.ndarray):
+        return np.array_equiv(mine,other)
+      if scipy.sparse.issparse(mine):
+        from common import assertScipyAllClose
+        try:
+          assertScipyAllClose(mine,other)
+        except AssertionError:
+          return False
+        return True
+      try:
+        # try the dumb way
+        return mine == other
+      except:
+        pass
+      if isinstance(mine,(list,tuple)):
+        for m,o in zip(mine,other):
+          if not attrEq(m,o):
+            return False
+        return True
+      raise NotImplemtentedError
+
     if id(self) == id(other):
       return True
-    if isinstance(other,Mesh):
-      selfDict  = self.__dict__
-      otherDict = other.__dict__
 
-      if len(selfDict.keys()) != len(otherDict.keys()):
-        return False
-      selfItems = sorted(selfDict.items())
-      otherItems = sorted(otherDict.items())
-      for (selfkey,selfval),(otherkey,otherval) in zip(selfItems,otherItems):
+    if not isinstance(other,self.__class__):
+      return NotImplemented
+
+    if len(self.__slots__) != len(other.__slots__):
+      return False
+
+    for attr in self.__slots__:
+      if attr != "__dict__":
         try:
-          if (selfkey != otherkey) or (selfval != otherval):
-            return False
-        except ValueError:
-          if isinstance(selfval,np.ndarray):
-            if not np.array_equiv(selfval,otherval):
-              return False
-          elif scipy.sparse.issparse(selfval):
-            from common import assertScipyAllClose
-            try:
-              assertScipyAllClose(selfval,otherval)
-            except AssertionError:
-              return False
-      return True
-    return NotImplemented
+          myattr    = getattr(self,attr)
+          otherattr = getattr(other,attr)
+        except AttributeError:
+          return False
+        if not attrEq(myattr,otherattr):
+          return False
+
+    selfDict  = self.__dict__
+    otherDict = other.__dict__
+    if len(selfDict.keys()) != len(otherDict.keys()):
+      return False
+
+    selfItems  = sorted(selfDict.items())
+    otherItems = sorted(otherDict.items())
+    for (selfkey,selfval),(otherkey,otherval) in zip(selfItems,otherItems):
+      try:
+        if (selfkey != otherkey) or (selfval != otherval):
+          return False
+      except ValueError:
+        if not attrEq(selfval,otherval):
+          return False
+    return True
 
   def __enter__(self):
     return self
@@ -118,9 +149,8 @@ class Mesh(object):
       meshOut.remove_orphaned_nodes()
     if returnMesh:
       return meshOut
-    else:
-      meshio.write(meshFileOut,meshOut,file_format=meshFormatOut)
-      self.log.info("wrote mesh to '%s' with format '%s'",meshFileOut,meshFormatOut)
+    meshio.write(meshFileOut,meshOut,file_format=meshFormatOut)
+    self.log.info("wrote mesh to '%s' with format '%s'",meshFileOut,meshFormatOut)
     return
 
   def partitionMesh(self,numPart=-1):
@@ -146,7 +176,7 @@ class Mesh(object):
     nValid = sum(1 for p in self.partitions if len(p))
     self.log.info("number of partitions requested %d, actual %d, average cells/partition %d",
                   numPart,nValid,len(self.cellData)/nValid)
-    partCountSum  = sum([len(x) for x in self.partitions])
+    partCountSum = sum([len(x) for x in self.partitions])
     if partCountSum != len(self.cellData):
       raise RuntimeError("Partition cell-count sum %d != global number of cells %d" %
                          (partCountSum,len(self.cellData)))
@@ -216,10 +246,11 @@ class Mesh(object):
     except ValueError:
       # ValueError: not enough values to unpack (expected 3, got 0)
       f,si,sv = [],[],[]
-    return PartitionInterface(ownFaces=np.array(f),mirrorIds=np.array(si),mirrorVertices=np.array(sv))
+    p = PartitionInterface(ownFaces=np.array(f),mirrorIds=np.array(si),mirrorVertices=np.array(sv))
+    return p
 
   def __computePartitionInterfaceList(self):
-    self.__assertPartitioned();
+    self.__assertPartitioned()
     if not hasattr(self,"partitionInterfaces"):
       self.partitionInterfaces = [self.__computePartitionInterface(p) for p in self.partitions]
     return self.partitionInterfaces
@@ -241,7 +272,10 @@ class Mesh(object):
     elIds    = np.empty((ne,len(cells[0])),dtype=np.intp)
     elIds[:] = np.arange(ne).reshape(-1,1)
     cDim     = len(elIds[0])
-    v2c      = scipy.sparse.coo_matrix((np.ones((ne*cDim,),dtype=np.intp),(cells.ravel(),elIds.ravel(),),))
+    v2c      = scipy.sparse.coo_matrix((
+      np.ones((ne*cDim,),dtype=np.intp),
+      (cells.ravel(),elIds.ravel(),)
+    ))
     v2c      = v2c.tocsr(copy=False)
     if version_info <= (3,5):
       c2c = v2c.T @ v2c
