@@ -127,16 +127,24 @@ To get a local copy up and running follow these simple steps.
   import pyhesive
 
   # create the mesh from plain old data
-  pyh = pyhesive.Mesh.fromPOD(points,cells)
+  pyh = pyhesive.Mesh.from_POD(points,cells)
 
   # create partitions
-  pyh.partitionMesh(numberOfPartitions)
+  number_of_partitions = 15 # for example
+  pyh.partition_mesh(number_of_partitions)
 
   # insert elements between partitions
-  pyh.insertElements()
+  pyh.insert_elements()
 
   # write to file, for example in abaqus .inp format
-  pyh.writeMesh(outputFilename,meshFormatOut="abaqus")
+  output_file_name = "~/projects/meshes/cohesive_mesh"
+  pyh.write_mesh(output_file_name,mesh_format_out="abaqus")
+  
+  # for convenience, all of the above can also be chained
+  pyhesive.Mesh.from_POD(points,cells)\
+               .partition_mesh(number_of_partitions)\
+			   .insert_elements()\
+			   .write_mesh(output_file_name,mesh_format_out="abaqus")
   ```
 
 ### Testing
