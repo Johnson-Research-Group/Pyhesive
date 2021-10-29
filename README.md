@@ -102,14 +102,16 @@ To get a local copy up and running follow these simple steps.
 ### Installation
 
 * Install via [pip](https://pypi.org/project/pyhesive/)
-   ```sh
-   pip install pyhesive
-   ```
+
+```sh
+pip install pyhesive
+```
 
 * Clone the repo
-   ```sh
-   git clone https://gitlab.com/Jfaibussowitsch/pyhesive.git
-   ```
+
+```sh
+git clone https://gitlab.com/Jfaibussowitsch/pyhesive.git
+```
 
 ### Example Usage
 
@@ -151,17 +153,15 @@ To get a local copy up and running follow these simple steps.
 
 To run the test suite, clone the repository and from the root folder either
 
-* 
-  ```sh
-  pytest
-  ```
+```sh
+pytest
+```
 
 or
 
-* 
-  ```sh
-  make test
-  ```
+```sh
+make test
+```
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->

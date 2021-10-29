@@ -1,6 +1,6 @@
 import setuptools
 
-with open("README.md", "r", encoding="utf-8") as fh:
+with open("README.md","r",encoding="utf-8") as fh:
   long_description = fh.read()
 
 test_deps = [
@@ -18,7 +18,7 @@ extras = {
 
 setuptools.setup(
   name="pyhesive",
-  version="0.3",
+  version="0.3.1",
   author="Jacob Faibussowitsch",
   author_email="jacob.fai@gmail.com",
   description="Insert cohesive elements into any mesh",

@@ -1,6 +1,6 @@
-import sys
+from sys import version_info
 
-if sys.version_info >= (3,8):
+if version_info >= (3,8):
   from importlib import metadata
 else:
   import importlib_metadata as metadata
