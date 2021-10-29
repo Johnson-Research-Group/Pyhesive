@@ -5,84 +5,85 @@ Created on Thu Apr  29 15:35:49 2021
 
 @author: jacobfaibussowitsch
 """
-import common
-import fixtures
 import copy
 import pyhesive
 import meshio
 import pytest
+from common import no_except,assert_scipy_all_close
+import fixtures
+
 
 meshes = fixtures.meshlist()
 
 @pytest.mark.parametrize("mesh,error",[
   ("empty"    ,pytest.raises(ValueError)),
-  ("tetSingle",common.noExcept()),
-  ("tetDouble",common.noExcept()),
-  ("hexSingle",common.noExcept()),
-  ("hexQuad"  ,common.noExcept()),
-  ("hexOctet" ,common.noExcept()),
+  ("tetSingle",no_except()),
+  ("tetDouble",no_except()),
+  ("hexSingle",no_except()),
+  ("hexQuad"  ,no_except()),
+  ("hexOctet" ,no_except()),
 ],indirect=["mesh"])
 def test_create(mesh,error,request):
   with error:
     if isinstance(mesh,meshio.Mesh):
       pyh = pyhesive.Mesh(mesh)
     else:
-      pyh = pyhesive.Mesh.fromFile(mesh)
+      pyh = pyhesive.Mesh.from_file(mesh)
     assert isinstance(pyh,pyhesive.Mesh)
   return
 
 
 @pytest.mark.parametrize("pyhmesh,adjacency",zip(meshes,meshes),indirect=True)
-def test_computeAdjacencyMatrix(pyhmesh,adjacency):
-  c2c,v2v = pyhmesh.computeAdjacencyMatrix(v2v=True)
-  c2cExpected,v2vExpected = adjacency
-  common.assertScipyAllClose(c2c,c2cExpected)
-  common.assertScipyAllClose(v2v,v2vExpected)
+def test_compute_adjacency_matrix(pyhmesh,adjacency):
+  c2c,v2v = pyhmesh.compute_adjacency_matrix(v2v=True)
+  c2c_expected,v2v_expected = adjacency
+  assert_scipy_all_close(c2c,c2c_expected)
+  assert_scipy_all_close(v2v,v2v_expected)
   return
 
 
 @pytest.mark.parametrize("pyhmesh,closure",zip(meshes,meshes),indirect=True)
-def test_computeClosure(pyhmesh,closure):
-  adj,bdCells,bdFaces = pyhmesh.computeClosure(fullClosure=True)
-  adjExpected,bdCellsExpected,bdFacesExpected = closure
-  assert adj     == adjExpected
-  assert bdCells == bdCellsExpected
-  assert bdFaces == bdFacesExpected
+def test_compute_closure(pyhmesh,closure):
+  adjacency,boundary_cells,boundary_faces = pyhmesh.compute_closure(full_closure=True)
+  adjacency_expected,boundary_cells_expected,boundary_faces_expected = closure
+  assert adjacency == adjacency_expected
+  assert boundary_cells == boundary_cells_expected
+  assert boundary_faces == boundary_faces_expected
   return
 
 
-@pytest.mark.parametrize("mesh,partitionData",zip(meshes,meshes),indirect=True)
-def test_computePartitionVertexMap(mesh,partitionData,subtests):
-  for numpart,data in partitionData.items():
+@pytest.mark.parametrize("mesh,partition_data",zip(meshes,meshes),indirect=True)
+def test_get_partition_vertex_map(mesh,partition_data,subtests):
+  for numpart,data in partition_data.items():
     with subtests.test(numpart=numpart):
       pyh = pyhesive.Mesh(mesh)
-      pyh.partitionMesh(numpart)
-      pyh._Mesh__computePartitionVertexMap()
-      assert pyh.partVMap == data["partitionVertexMap"]
+      pyh.partition_mesh(numpart)
+      pyh._Mesh__get_partition_vertex_map()
+      assert pyh.partition_vertex_map == data["partition_vertex_map"]
   return
 
 
-@pytest.mark.parametrize("mesh,partitionData",zip(meshes,meshes),indirect=True)
-def test_computePartitionInterfaces(mesh,partitionData,subtests):
-  for numpart,data in partitionData.items():
+@pytest.mark.parametrize("mesh,partition_data",zip(meshes,meshes),indirect=True)
+def test_get_partition_interfaces(mesh,partition_data,subtests):
+  for numpart,data in partition_data.items():
     with subtests.test(numpart=numpart):
       pyh = pyhesive.Mesh(mesh)
-      pyh.partitionMesh(numpart)
-      pint = pyh._Mesh__computePartitionInterfaceList()
-      for pcomputed,pexpected in zip(pint,data["partitionInterfaces"]):
+      pyh.partition_mesh(numpart)
+      interfaces = pyh._Mesh__get_partition_interface_list()
+      for pcomputed,pexpected in zip(interfaces,data["partition_interfaces"]):
         assert pcomputed == pexpected
   return
 
 
-@pytest.mark.parametrize("mesh,partitionData",zip(meshes,meshes),indirect=True)
-def test_FullStack(mesh,partitionData,subtests):
+@pytest.mark.parametrize("mesh,partition_data",zip(meshes,meshes),indirect=True)
+def test_full_stack(mesh,partition_data,subtests):
   pyhm = pyhesive.Mesh(mesh)
-  for numpart,data in partitionData.items():
+  for numpart,data in partition_data.items():
     pyh = copy.deepcopy(pyhm)
     with subtests.test(numpart=numpart):
-      pyh.partitionMesh(numpart)
-      pyh.insertElements()
-      assert pyh == data["pyhesiveMesh"]
+      pyh.partition_mesh(numpart)
+      pyh.insert_elements()
+      assert pyh == data["pyhesive_mesh"]
   return
 
 

@@ -5,42 +5,45 @@ Created on Thu Apr  29 16:02:24 2021
 
 @author: jacobfaibussowitsch
 """
-import os,pickle,collections,contextlib,meshio
+import os
+import pickle
+from collections import namedtuple
+import contextlib
+import meshio
 import pytest
 import numpy as np
-import scipy as scp
-from scipy import sparse
+import scipy.sparse as scp
 
-curDir = os.path.basename(os.getcwd())
-if curDir == "test":
-  testRootDir = os.getcwd()
-elif curDir == "pyhesive":
-  parentDir = os.path.basename(os.path.dirname(os.getcwd()))
-  if parentDir == "pyhesive":
+cur_dir = os.path.basename(os.getcwd())
+if cur_dir == "test":
+  test_root_dir = os.getcwd()
+elif cur_dir == "pyhesive":
+  parent_dir = os.path.basename(os.path.dirname(os.getcwd()))
+  if parent_dir == "pyhesive":
     # we are in pyhesive/pyhesive, i.e. the package dir
-    testRootDir = os.path.join(os.getcwd(),"test")
+    test_root_dir = os.path.join(os.getcwd(),"test")
   elif "pyhesive" in os.listdir():
     # we are in root pyhesive dir
-    testRootDir = os.path.join(os.getcwd(),"pyhesive","test")
+    test_root_dir = os.path.join(os.getcwd(),"pyhesive","test")
   else:
     raise RuntimeError("Cannot determine location")
 else:
   raise RuntimeError("Cannot determine location")
 
-testRootDir     = os.path.realpath(os.path.expanduser(testRootDir))
-pyhesiveRootDir = os.path.dirname(testRootDir)
-dataDir         = os.path.join(testRootDir,"data")
-meshDir         = os.path.join(dataDir,"meshes")
-binDir          = os.path.join(dataDir,"bin")
+test_root_dir   = os.path.realpath(os.path.expanduser(test_root_dir))
+pyhesiveRootDir = os.path.dirname(test_root_dir)
+data_dir        = os.path.join(test_root_dir,"data")
+mesh_dir        = os.path.join(data_dir,"meshes")
+bin_dir         = os.path.join(data_dir,"bin")
 
-dataSetNamedTuple = collections.namedtuple("DataSet",["mesh","adjacency","closure","partitionData"])
-dataSetNamedTuple.__new__.__defaults__ = (None,)*len(dataSetNamedTuple._fields)
-class DataSet(dataSetNamedTuple):
+data_set_named_tuple = namedtuple("DataSet",["mesh","adjacency","closure","partitionData"])
+data_set_named_tuple.__new__.__defaults__ = (None,)*len(data_set_named_tuple._fields)
+class DataSet(data_set_named_tuple):
   __slots__ = ()
 
 
 @contextlib.contextmanager
-def noExcept():
+def no_except():
   yield
 
 def storeObj(filename,obj):
@@ -52,8 +55,8 @@ def loadObj(filename):
   with open(filename, "rb") as f:
     return pickle.load(f)
 
-def assertScipyAllClose(A,B,rtol=1e-7,atol=1e-8):
-  def _scipyAllCloseLil():
+def assert_scipy_all_close(A,B,rtol=1e-7,atol=1e-8):
+  def _scipy_all_close_lil():
     assert A.shape == B.shape
     for i in range(A.get_shape()[0]):
       rowA = A.getrowview(i).toarray()
@@ -61,7 +64,7 @@ def assertScipyAllClose(A,B,rtol=1e-7,atol=1e-8):
       np.testing.assert_allclose(rowA,rowB,rtol=rtol,atol=atol)
     return
 
-  def _scipyAllCloseSparse():
+  def _scipy_all_close_sparse():
     # If you want to check matrix shapes as well
     np.testing.assert_allclose(A.shape,B.shape,rtol=rtol,atol=atol)
 
@@ -81,10 +84,10 @@ def assertScipyAllClose(A,B,rtol=1e-7,atol=1e-8):
     return
 
   assert type(A) == type(B)
-  if isinstance(A,scp.sparse.lil_matrix):
-    _scipyAllCloseLil()
+  if isinstance(A,scp.lil_matrix):
+    _scipy_all_close_lil()
   else:
-    _scipyAllCloseSparse()
+    _scipy_all_close_sparse()
   return
 
 def assertNumpyArrayEqual(self,first,second,msg=None):
@@ -116,4 +119,3 @@ def commonPartitionSetup(meshFileList,testFileList,partitionList,replaceFunc,tes
         assert part == testPart
         pyh.PartitionMesh(part)
         testFunc(pyh,testDict,part)
-

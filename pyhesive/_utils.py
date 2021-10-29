@@ -10,23 +10,23 @@ import sys
 PYHESIVE_LOG_LEVEL  = 50
 PYHESIVE_LOG_STREAM = sys.stdout
 
-def setLogLevel(logLevel):
+def set_log_level(log_level):
+  assert isinstance(log_level,int)
   global PYHESIVE_LOG_LEVEL
-  assert isinstance(logLevel,int)
-  PYHESIVE_LOG_LEVEL = logLevel
-  return
-
-def getLogLevel():
+  PYHESIVE_LOG_LEVEL = log_level
   return PYHESIVE_LOG_LEVEL
 
-def setLogStream(stream):
+def get_log_level():
+  return PYHESIVE_LOG_LEVEL
+
+def set_log_stream(stream):
   global PYHESIVE_LOG_STREAM
   PYHESIVE_LOG_STREAM.flush()
   PYHESIVE_LOG_STREAM = stream
-  return
-
-def getLogStream():
   return PYHESIVE_LOG_STREAM
 
-def flatten(inlist):
-  return [item for sublist in inlist for item in sublist]
+def get_log_stream():
+  return PYHESIVE_LOG_STREAM
+
+def flatten(in_list):
+  return [item for sub_list in in_list for item in sub_list]

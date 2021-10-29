@@ -13,69 +13,72 @@ try:
 except ModuleNotFoundError:
   # silly pythonpath finagling in case someone runs this from cloning the git repo
   # rather than installing it as a package
-  sys.path.append(os.path.join(os.getcwd(), ".."))
+  sys.path.append(os.path.join(os.getcwd(),".."))
   import pyhesive
 
-def checkSaneMeshioFormat(format):
-  dummyFile = os.path.abspath('deletableDummmyFile.deleteme')
-  dummyMesh = meshio.Mesh(np.empty((0,3)),[])
-  meshio.write(dummyFile,dummyMesh,file_format=format)
+def check_sane_meshio_format(format):
+  dummy_file = os.path.abspath('deletableDummmyFile.deleteme')
+  dummy_mesh = meshio.Mesh(np.empty((0,3)),[])
+  meshio.write(dummy_file,dummy_mesh,file_format=format)
   try:
-    os.remove(dummyFile)
+    os.remove(dummy_file)
   except OSError as ose:
     import errno
     if ose.errno != errno.ENOENT: # no such file or directory
       raise # re-raise exception if a different error occurred
   return
 
-
-def parseArgs(argv):
-  path          = "<path>"
-  string        = "<string>"
-  integer       = "<int>"
-  defaultFormat = "abaqus"
-  defaultName   = "pyhesiveOutput_{meshname}"
-  parser        = argparse.ArgumentParser(description="Insert Cohesive Elements Into Arbitrary Finite Element Mesh",formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument("-i","--input",required=True,metavar=path,help="specify the input mesh file",dest="meshFileIn")
-  parser.add_argument("-b","--num-partitions",metavar=integer,default=3,const=-1,nargs="?",type=int,help="specify the number of partitions to make of the mesh, use -1 to make as many partitions as there are cells",dest="numPart")
-  parser.add_argument("-o","--output",nargs="?",const=defaultName+"."+defaultFormat,default=defaultName+"."+defaultFormat,metavar=path,help="specify the output mesh file",dest="meshFileOut")
-  parser.add_argument("-fi","--input-format",metavar=string,help="specify the input mesh file format, defaults to file extension",dest="meshFormatIn")
-  parser.add_argument("-fo","--output-format",nargs="?",const=defaultFormat,default=defaultFormat,metavar=string,help="specify the output mesh file format",dest="meshFormatOut")
+def parse_args(argv):
+  path           = "<path>"
+  string         = "<string>"
+  integer        = "<int>"
+  default_format = "abaqus"
+  default_name   = "pyhesiveOutput_{mesh_name}"
+  parser         = argparse.ArgumentParser(
+    description="Insert Cohesive Elements Into Arbitrary Finite Element Mesh",
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter
+  )
+  parser.add_argument("-i","--input",required=True,metavar=path,help="specify the input mesh file",dest="mesh_file_in")
+  parser.add_argument("-b","--num-partitions",metavar=integer,default=3,const=-1,nargs="?",type=int,help="specify the number of partitions to make of the mesh, use -1 to make as many partitions as there are cells",dest="num_partitions")
+  parser.add_argument("-o","--output",nargs="?",const=default_name+"."+default_format,default=default_name+"."+default_format,metavar=path,help="specify the output mesh file",dest="mesh_file_out")
+  parser.add_argument("-fi","--input-format",metavar=string,help="specify the input mesh file format, defaults to file extension",dest="mesh_format_in")
+  parser.add_argument("-fo","--output-format",nargs="?",const=default_format,default=default_format,metavar=string,help="specify the output mesh file format",dest="mesh_format_out")
   parser.add_argument("-l","--log-file",nargs="?",default=sys.stdout.name,metavar=path,help="log output to file instead of STDOUT",dest="stream")
   parser.add_argument("-v","--verbose",default=1,action="count",help="increase verbosity of logging statements, default no logging",dest="verbosity")
   parser.add_argument("-p","--prune",action="store_true",help="prune dangling vertices",dest="prune")
   parser.add_argument("--verify",help="Perform verification tests after inserting cohesive elements",action="store_true")
-  parser.set_defaults(vLevel=40)
+  parser.set_defaults(verbosity_level=40)
   args = parser.parse_args(args=argv)
 
-  if args.meshFileIn is not None:
-    _,filen  = os.path.split(args.meshFileIn)
+  if args.mesh_file_in is not None:
+    _,filen  = os.path.split(args.mesh_file_in)
     filename = filen.split(".")[0]
   else:
     filename = "mesh"
-    args.meshFileOut = args.meshFileOut.format(meshname=filename)
+    args.mesh_file_out = args.mesh_file_out.format(mesh_name=filename)
   if args.stream is not sys.stdout.name:
     args.stream = open(args.stream[0],"w")
   else:
     args.stream = sys.stdout
   for verb in range(args.verbosity):
-    if args.vLevel >= 20:
-      args.vLevel -= 10
+    if args.verbosity_level >= 20:
+      args.verbosity_level -= 10
 
-  checkSaneMeshioFormat(args.meshFormatOut)
+  check_sane_meshio_format(args.mesh_format_out)
   return args
 
 def main(argv=None):
-  args = parseArgs(argv)
-  pyhesive.setLogLevel(args.vLevel)
-  pyhesive.setLogStream(args.stream)
-  with pyhesive.Mesh.fromFile(args.meshFileIn,formatIn=args.meshFormatIn) as pyh:
-    pyh.partitionMesh(numPart=args.numPart)
-    pyh.insertElements()
+  args = parse_args(argv)
+  pyhesive.set_log_level(args.verbosity_level)
+  pyhesive.set_log_stream(args.stream)
+  with pyhesive.Mesh.from_file(args.mesh_file_in,format_in=args.mesh_format_in) as pyh:
+    pyh.partition_mesh(num_part=args.num_partitions)
+    pyh.insert_elements()
     if args.verify:
-      pyh.verifyCohesiveMesh()
-    pyh.writeMesh(args.meshFileOut,meshFormatOut=args.meshFormatOut,prune=args.prune)
+      pyh.verify_cohesive_mesh()
+    pyh.write_mesh(args.mesh_file_out,mesh_format_out=args.mesh_format_out,prune=args.prune)
   return
+
 
 if __name__ == "__main__":
   main()

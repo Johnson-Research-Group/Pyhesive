@@ -8,7 +8,7 @@ Created on Tue Aug 31 20:02:24 2021
 import numpy as np
 from collections import namedtuple
 
-class PartitionInterface(namedtuple("PartitionInteface",["ownFaces","mirrorIds","mirrorVertices"])):
+class PartitionInterface(namedtuple("PartitionInteface",["own_faces","mirror_ids","mirror_vertices"])):
   __slots__ = ()
 
   def __ne__(self,other):
@@ -18,11 +18,11 @@ class PartitionInterface(namedtuple("PartitionInteface",["ownFaces","mirrorIds",
     if id(self) == id(other):
       return True
     if isinstance(other,PartitionInterface):
-      if np.any(self.ownFaces != other.ownFaces):
+      if np.any(self.own_faces != other.own_faces):
         return False
-      if np.any(self.mirrorIds != other.mirrorIds):
+      if np.any(self.mirror_ids != other.mirror_ids):
         return False
-      if np.any(self.mirrorVertices != other.mirrorVertices):
+      if np.any(self.mirror_vertices != other.mirror_vertices):
         return False
       return True
     return NotImplemented

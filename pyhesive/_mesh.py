@@ -5,27 +5,29 @@ Created on Mon Nov  9 17:44:24 2020
 
 @author: jacobfaibussowitsch
 """
-from ._utils import flatten,getLogLevel,getLogStream
-from ._cellset import CellSet
-from ._partitioninterface import PartitionInterface
-
+from sys import version_info
+import traceback
 import logging
 import meshio
 import pymetis
 import collections
 import scipy
-from scipy import sparse
+from scipy import sparse as scp
 import numpy as np
 
-class Mesh(object):
-  __slots__ = ("log","cellData","coords","__dict__")
+from ._utils import flatten,get_log_level,get_log_stream
+from ._cell_set import CellSet
+from ._partition_interface import PartitionInterface
 
-  def __initLogger(self):
+class Mesh(object):
+  __slots__ = ("log","cell_data","coords","__dict__")
+
+  def __init_logger(self):
     slog = logging.getLogger(self.__class__.__name__)
-    slog.setLevel(getLogLevel())
+    slog.setLevel(get_log_level())
     slog.propagate = False
-    ch = logging.StreamHandler(getLogStream())
-    ch.setLevel(getLogLevel())
+    ch = logging.StreamHandler(get_log_stream())
+    ch.setLevel(get_log_level())
     ch.propagate = False
     ch.setFormatter(
       logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s")
@@ -33,50 +35,53 @@ class Mesh(object):
     slog.addHandler(ch)
     return slog
 
-  def __assertPartitioned(self):
+  def __assert_partitioned(self):
     assert hasattr(self,"partitions"),"Must partition mesh first"
     return
 
   def __init__(self,mesh):
     if isinstance(mesh,meshio.Mesh):
       try:
-        self.cellData = CellSet.fromCellBlock(mesh.cells[-1])
+        self.cell_data = CellSet.from_CellBlock(mesh.cells[-1])
       except IndexError as ie:
         raise ValueError("input mesh does not contain any cells") from ie
       self.coords = mesh.points
     elif isinstance(mesh,self.__class__):
-      self.cellData = mesh.cellData
-      self.coords   = mesh.coords
+      self.cell_data = mesh.cell_data
+      self.coords    = mesh.coords
     else:
-      raise ValueError("unknown type of input mesh {}".format(type(mesh)))
-    self.cohesiveCells = None
-    self.log = self.__initLogger();
-    self.log.info("number of cells %d, vertices %d",len(self.cellData.cells),len(self.coords))
-    self.log.info("cell dimension %d, type %s, number of faces per vertex %d",
-                  self.cellData.dim,self.cellData.type,len(self.cellData.faceIndices[0]))
+      err = "unknown type of input mesh {}".format(type(mesh))
+      raise ValueError(err)
+    self.cohesive_cells = None
+    self.log = self.__init_logger()
+    self.log.info("number of cells %d, vertices %d",len(self.cell_data.cells),len(self.coords))
+    self.log.info(
+      "cell dimension %d, type %s, number of faces per vertex %d",
+      self.cell_data.dim,self.cell_data.type,len(self.cell_data.face_indices[0])
+    )
     return
 
   @classmethod
-  def fromFile(cls,filename,formatIn=None):
-    return cls(meshio.read(filename,formatIn))
+  def from_file(cls,file_name,format_in=None):
+    return cls(meshio.read(file_name,format_in))
 
   @classmethod
-  def fromPOD(cls,points,cells):
+  def from_POD(cls,points,cells):
     return cls(meshio.Mesh(points,cells))
 
   def __ne__(self,other):
     return not self.__eq__(other)
 
   def __eq__(self,other):
-    def attrEq(mine,other):
+    def attr_eq(mine,other):
       if type(mine) != type(other):
         return False
       if isinstance(mine,np.ndarray):
         return np.array_equiv(mine,other)
-      if scipy.sparse.issparse(mine):
-        from common import assertScipyAllClose
+      if scp.issparse(mine):
+        from common import assert_scipy_all_close
         try:
-          assertScipyAllClose(mine,other)
+          assert_scipy_all_close(mine,other)
         except AssertionError:
           return False
         return True
@@ -87,7 +92,7 @@ class Mesh(object):
         pass
       if isinstance(mine,(list,tuple)):
         for m,o in zip(mine,other):
-          if not attrEq(m,o):
+          if not attr_eq(m,o):
             return False
         return True
       raise NotImplemtentedError
@@ -104,26 +109,25 @@ class Mesh(object):
     for attr in self.__slots__:
       if attr != "__dict__":
         try:
-          myattr    = getattr(self,attr)
-          otherattr = getattr(other,attr)
+          my_attr    = getattr(self,attr)
+          other_attr = getattr(other,attr)
         except AttributeError:
           return False
-        if not attrEq(myattr,otherattr):
+        if not attr_eq(my_attr,other_attr):
           return False
 
-    selfDict  = self.__dict__
-    otherDict = other.__dict__
-    if len(selfDict.keys()) != len(otherDict.keys()):
+    self_dict  = self.__dict__
+    other_dict = other.__dict__
+    if len(self_dict.keys()) != len(other_dict.keys()):
       return False
 
-    selfItems  = sorted(selfDict.items())
-    otherItems = sorted(otherDict.items())
-    for (selfkey,selfval),(otherkey,otherval) in zip(selfItems,otherItems):
+    self_items,other_items = sorted(self_dict.items()),sorted(other_dict.items())
+    for (self_key,self_val),(other_key,other_val) in zip(self_items,other_items):
       try:
-        if (selfkey != otherkey) or (selfval != otherval):
+        if (self_key != other_key) or (self_val != other_val):
           return False
       except ValueError:
-        if not attrEq(selfval,otherval):
+        if not attr_eq(self_val,other_val):
           return False
     return True
 
@@ -132,322 +136,355 @@ class Mesh(object):
 
   def __exit__(self,exc_type,exc_value,tb):
     if exc_type is not None:
-      import traceback
       traceback.print_exception(exc_type,exc_value,tb)
     return
 
-  def writeMesh(self,meshFileOut,meshFormatOut=None,prune=False,returnMesh=False):
-    cells = [(self.cellData.type,self.cellData.cells)]
-    if self.cohesiveCells is not None:
-      self.log.info("generated %d cohesive elements of type '%s' and %d duplicated vertices",
-                    len(self.cohesiveCells),self.cohesiveCells.type,len(self.dupCoords))
-      cells.append((self.cohesiveCells.type,self.cohesiveCells.cells))
+  def write_mesh(self,mesh_file_out,mesh_format_out=None,prune=False,return_mesh=False):
+    cells = [(self.cell_data.type,self.cell_data.cells)]
+    if self.cohesive_cells is not None:
+      self.log.info(
+        "generated %d cohesive elements of type '%s' and %d duplicated vertices",
+        len(self.cohesive_cells),self.cohesive_cells.type,len(self.dup_coords)
+      )
+      cells.append((self.cohesive_cells.type,self.cohesive_cells.cells))
     else:
       self.log.info("generated no cohesive elements")
-    meshOut = meshio.Mesh(self.coords,cells)
+    mesh_out = meshio.Mesh(self.coords,cells)
     if prune:
-      meshOut.remove_orphaned_nodes()
-    if returnMesh:
-      return meshOut
-    meshio.write(meshFileOut,meshOut,file_format=meshFormatOut)
-    self.log.info("wrote mesh to '%s' with format '%s'",meshFileOut,meshFormatOut)
+      mesh_out.remove_orphaned_nodes()
+    if return_mesh:
+      return mesh_out
+    meshio.write(mesh_file_out,mesh_out,file_format=mesh_format_out)
+    self.log.info("wrote mesh to '%s' with format '%s'",mesh_file_out,mesh_format_out)
     return
 
-  def partitionMesh(self,numPart=-1):
-    if numPart == 0:
+  def partition_mesh(self,num_part=-1):
+    if num_part == 0:
       self.partitions = tuple()
       return self
-    if numPart == -1:
-      numPart = len(self.cellData)
-    elif numPart > len(self.cellData):
-      self.log.warning("number of partitions %d > num cells %d, using num cells instead",numPart,len(self.cellData))
-    self.adjacencyMatrix       = self.computeAdjacencyMatrix()
-    self.cellAdjacency,bdFaces = self.computeClosure(fullClosure=False)
-    self.bdSet  = set(flatten(bdFaces))
-    if numPart < len(self.cellData):
-      ncuts,membership = pymetis.part_graph(numPart,adjacency=self.cellAdjacency)
+    if num_part == -1:
+      num_part = len(self.cell_data)
+    elif num_part > len(self.cell_data):
+      self.log.warning(
+        "number of partitions %d > num cells %d, using num cells instead",
+        num_part,len(self.cell_data)
+      )
+    self.adjacency_matrix        = self.compute_adjacency_matrix()
+    self.cell_adjacency,bd_faces = self.compute_closure(full_closure=False)
+    self.bd_set                  = set(flatten(bd_faces))
+    if num_part < len(self.cell_data):
+      ncuts,membership = pymetis.part_graph(num_part,adjacency=self.cell_adjacency)
       if ncuts == 0:
         raise RuntimeError("no partitions were made by partitioner")
       membership      = np.array(membership)
-      self.partitions = tuple(np.argwhere(membership == x).ravel() for x in range(numPart))
+      self.partitions = tuple(np.argwhere(membership == p).ravel() for p in range(num_part))
     else:
-      membership      = np.array([x for x in range(len(self.cellData))])
+      membership      = np.array([x for x in range(len(self.cell_data))])
       self.partitions = tuple(np.array([x]) for x in membership)
-    nValid = sum(1 for p in self.partitions if len(p))
-    self.log.info("number of partitions requested %d, actual %d, average cells/partition %d",
-                  numPart,nValid,len(self.cellData)/nValid)
-    partCountSum = sum([len(x) for x in self.partitions])
-    if partCountSum != len(self.cellData):
-      raise RuntimeError("Partition cell-count sum %d != global number of cells %d" %
-                         (partCountSum,len(self.cellData)))
+    n_valid = sum(1 for partition in self.partitions if len(partition))
+    self.log.info(
+      "number of partitions requested %d, actual %d, average cells/partition %d",
+      num_part,n_valid,len(self.cell_data)/n_valid
+    )
+    part_count_sum = sum(len(partition) for partition in self.partitions)
+    if part_count_sum != len(self.cell_data):
+      err = "Partition cell-count sum {} != global number of cells {}".format(
+        part_count_sum,len(self.cell_data)
+      )
+      raise RuntimeError(err)
     return self
 
-  def __computePartitionVertexMap(self,partitions=None,cellSet=None):
-    if hasattr(self,"partVMap"):
-      return self.partVMap
-    if cellSet is None:
-      cellSet = self.cellData
+  def __get_partition_vertex_map(self,partitions=None,cell_set=None):
+    if hasattr(self,"partition_vertex_map"):
+      return self.partition_vertex_map
+    if cell_set is None:
+      cell_set = self.cell_data
     if partitions is None:
-      self.__assertPartitioned();
+      self.__assert_partitioned();
       partitions = self.partitions
-    partVMap      = tuple(np.unique(cellSet.cells[part].ravel()) for part in partitions)
-    self.partVMap = collections.Counter(flatten(partVMap))
-    return self.partVMap
+    partition_vertex_map      = (np.unique(cell_set.cells[part].ravel()) for part in partitions)
+    self.partition_vertex_map = collections.Counter(flatten(partition_vertex_map))
+    return self.partition_vertex_map
 
-  def __computePartitionInterface(self,partition,globalAdjacencyMatrix=None):
-    self.__computePartitionVertexMap();
-    bdfaces      = []
-    cellSet      = self.cellData[partition]
-    facesPerCell = len(cellSet.faceIndices)
-    faceDim      = len(cellSet.faceIndices[0])
-    if globalAdjacencyMatrix is None:
-      adjMat = self.adjacencyMatrix[partition,:][:,partition]
+  def __compute_partition_interface(self,partition,global_adjacency_matrix=None):
+    self.__get_partition_vertex_map()
+    boundary_faces = []
+    cell_set       = self.cell_data[partition]
+    faces_per_cell = len(cell_set.face_indices)
+    face_dim       = len(cell_set.face_indices[0])
+    if global_adjacency_matrix is None:
+      adj_mat = self.adjacency_matrix[partition,:][:,partition]
     else:
-      adjMat = globalAdjacencyMatrix[partition,:][:,partition].to_lil()
-    for rowindex,row in enumerate(adjMat.data):
-      # localNeighbors will have __local__ numbering
-      localNeighbors = [adjMat.rows[rowindex][n] for n in (i for i,k in enumerate(row) if k == faceDim)]
-      self.log.debug("cell %d locally adjacent to %s",rowindex,localNeighbors)
-      if len(localNeighbors) != facesPerCell:
+      adj_mat = global_adjacency_matrix[partition,:][:,partition].to_lil()
+    for row_idx,row in enumerate(adj_mat.data):
+      local_neighbors = [
+        adj_mat.rows[row_idx][n] for n in (i for i,k in enumerate(row) if k == face_dim)
+      ]
+      self.log.debug("cell %d locally adjacent to %s",row_idx,local_neighbors)
+      if len(local_neighbors) != faces_per_cell:
         # map local neighbor index to global cell ids
-        mappedLocalSet    = set(partition[localNeighbors])
+        mapped_local_set   = set(partition[local_neighbors])
         # get the ids of all global neighbors
-        globalNeighbors   = self.cellAdjacency[partition[rowindex]]
-        # equivalent to set(globals).difference(mappedLocalSet)
-        exteriorNeighbors = [n for n in globalNeighbors if n not in mappedLocalSet]
+        global_neighbors   = self.cell_adjacency[partition[row_idx]]
+        # equivalent to set(globals).difference(mapped_local_set)
+        exterior_neighbors = [n for n in global_neighbors if n not in mapped_local_set]
         # for all of my exterior neighbors, what faces do we have in common?
-        vertexSet     = set(cellSet.cells[rowindex])
-        exteriorFaces = [vertexSet.intersection(self.cellData.cells[c]) for c in exteriorNeighbors]
-        boundaryFaces = []
+        vertex_set     = set(cell_set.cells[row_idx])
+        exterior_faces = [
+          vertex_set.intersection(self.cell_data.cells[c]) for c in exterior_neighbors
+        ]
+        bd_faces       = []
         # loop over all possible faces of mine, and finding the indices for the mirrored
         # face for the exterior partner cell
-        for idx,face in enumerate(map(tuple,cellSet.cells[rowindex][cellSet.faceIndices])):
+        for idx,face in enumerate(map(tuple,cell_set.cells[row_idx][cell_set.face_indices])):
           try:
-            exteriorIdx = exteriorFaces.index(set(face))
+            exteriorIdx = exterior_faces.index(set(face))
           except ValueError:
             continue
-          neighborVertices = self.cellData.cells[exteriorNeighbors[exteriorIdx]]
-          neighborIndices  = np.array([(neighborVertices == x).nonzero()[0][0] for x in face])
-          boundaryFaces.append((face,exteriorNeighbors[exteriorIdx],neighborIndices))
+          neighbor_vertices = self.cell_data.cells[exterior_neighbors[exteriorIdx]]
+          neighbor_indices  = np.array([(neighbor_vertices == x).nonzero()[0][0] for x in face])
+          bd_faces.append((face,exterior_neighbors[exteriorIdx],neighbor_indices))
         if self.log.isEnabledFor(logging.DEBUG):
-          if len(exteriorNeighbors):
-            self.log.debug("cell %d marked on interface with neighbors %s",rowindex,exteriorNeighbors)
+          if len(exterior_neighbors):
+            self.log.debug("cell %d marked on interface with neighbors %s",row_idx,exterior_neighbors)
           else:
-            self.log.debug("cell %d marked locally interior",rowindex)
-          for f in boundaryFaces:
-            self.log.debug("face %s marked on interface" % (f[0],))
-        bdfaces.append(boundaryFaces)
+            self.log.debug("cell %d marked locally interior",row_idx)
+          for face in bd_faces:
+            self.log.debug("face %s marked on interface",face[0])
+        boundary_faces.append(bd_faces)
       else:
-        self.log.debug("cell %d marked locally interior",rowindex)
-    self.log.debug("%d interface face(s)",sum(len(_) for _ in bdfaces))
+        self.log.debug("cell %d marked locally interior",row_idx)
+    self.log.debug("%d interface face(s)",sum(len(_) for _ in boundary_faces))
     try:
-    #if len(bdfaces):
-      f,si,sv = zip(*flatten(bdfaces))
+    #if len(bd_faces):
+      f,si,sv = zip(*flatten(boundary_faces))
     except ValueError:
       # ValueError: not enough values to unpack (expected 3, got 0)
       f,si,sv = [],[],[]
-    p = PartitionInterface(ownFaces=np.array(f),mirrorIds=np.array(si),mirrorVertices=np.array(sv))
+    p = PartitionInterface(
+      own_faces=np.array(f),mirror_ids=np.array(si),mirror_vertices=np.array(sv)
+    )
     return p
 
-  def __computePartitionInterfaceList(self):
-    self.__assertPartitioned()
-    if not hasattr(self,"partitionInterfaces"):
-      self.partitionInterfaces = [self.__computePartitionInterface(p) for p in self.partitions]
-    return self.partitionInterfaces
+  def __get_partition_interface_list(self):
+    self.__assert_partitioned()
+    if not hasattr(self,"partition_interfaces"):
+      self.partition_interfaces = [self.__compute_partition_interface(p) for p in self.partitions]
+    return self.partition_interfaces
 
-  def computeAdjacencyMatrix(self,cells=None,format="lil",v2v=False):
-    from sys import version_info
-    def matsize(a):
-      if isinstance(a,scipy.sparse.csr_matrix) or isinstance(a,scipy.sparse.csc_matrix):
+  def compute_adjacency_matrix(self,cells=None,format="lil",v2v=False):
+    def mat_size(a):
+      if isinstance(a,scp.csr_matrix) or isinstance(a,scp.csc_matrix):
         return a.data.nbytes+a.indptr.nbytes+a.indices.nbytes
-      elif isinstance(a,scipy.sparse.lil_matrix):
+      elif isinstance(a,scp.lil_matrix):
         return a.data.nbytes+a.rows.nbytes
-      elif isinstance(a,scipy.sparse.coo_matrix):
+      elif isinstance(a,scp.coo_matrix):
         return a.col.nbytes+a.row.nbytes+a.data.nbytes
       return 0
 
     if cells is None:
-      cells  = self.cellData.cells
-    ne       = len(cells)
-    elIds    = np.empty((ne,len(cells[0])),dtype=np.intp)
-    elIds[:] = np.arange(ne).reshape(-1,1)
-    cDim     = len(elIds[0])
-    v2c      = scipy.sparse.coo_matrix((
-      np.ones((ne*cDim,),dtype=np.intp),
-      (cells.ravel(),elIds.ravel(),)
-    ))
-    v2c      = v2c.tocsr(copy=False)
+      cells  = self.cell_data.cells
+    ne             = len(cells)
+    element_ids    = np.empty((ne,len(cells[0])),dtype=np.intp)
+    element_ids[:] = np.arange(ne).reshape(-1,1)
+    cell_dim       = len(element_ids[0])
+    v2c            = scp.coo_matrix((
+      np.ones((ne*cell_dim,),dtype=np.intp),
+      (cells.ravel(),element_ids.ravel(),)
+    )).tocsr(copy=False)
     if version_info <= (3,5):
       c2c = v2c.T @ v2c
     else:
       c2c = v2c.T.__matmul__(v2c)
-    self.log.debug("c2c mat size %g kB",matsize(c2c)/(1024**2))
+    self.log.debug("c2c mat size %g kB",mat_size(c2c)/(1024**2))
     c2c = c2c.asformat(format,copy=False)
-    self.log.debug("c2c mat size after compression %g kB",matsize(c2c)/(1024**2))
+    self.log.debug("c2c mat size after compression %g kB",mat_size(c2c)/(1024**2))
     if v2v:
       v2v = v2c @ v2c.T
-      self.log.debug("v2v mat size %d bytes" % matsize(v2v))
+      self.log.debug("v2v mat size %d bytes",mat_size(v2v))
       v2v = v2v.asformat(format,copy=False)
-      self.log.debug("v2v mat size after compression %d bytes",matsize(v2v))
+      self.log.debug("v2v mat size after compression %d bytes",mat_size(v2v))
       return c2c,v2v
     else:
       return c2c
 
-  def computeClosure(self,cellSet=None,adjMat=None,fullClosure=True):
-    if cellSet is None:
-      cellSet = self.cellData
-    if adjMat is None:
-      adjMat = self.computeAdjacencyMatrix(cellSet.cells)
-    bdcells,bdfaces = [],[]
-    facesPerCell    = len(cellSet.faceIndices)
-    faceDim         = len(cellSet.faceIndices[0])
-    localAdjacency  = {}
-    for rowindex,row in enumerate(adjMat.data):
-      neighbors = (i for i,k in enumerate(row) if k == faceDim)
-      localAdjacency[rowindex] = list(map(adjMat.rows[rowindex].__getitem__,neighbors))
-      self.log.debug("cell %d adjacent to %s",rowindex,localAdjacency[rowindex])
-      if len(localAdjacency[rowindex]) != facesPerCell:
-        if fullClosure:
+  def compute_closure(self,cell_set=None,adj_mat=None,full_closure=True):
+    if cell_set is None:
+      cell_set = self.cell_data
+    if adj_mat is None:
+      adj_mat = self.compute_adjacency_matrix(cell_set.cells)
+    bd_cells,bd_faces = [],[]
+    faces_per_cell    = len(cell_set.face_indices)
+    face_dim          = len(cell_set.face_indices[0])
+    local_adjacency   = {}
+    for row_idx,row in enumerate(adj_mat.data):
+      neighbors = (i for i,k in enumerate(row) if k == face_dim)
+      local_adjacency[row_idx] = list(map(adj_mat.rows[row_idx].__getitem__,neighbors))
+      self.log.debug("cell %d adjacent to %s",row_idx,local_adjacency[row_idx])
+      if len(local_adjacency[row_idx]) != faces_per_cell:
+        if full_closure:
           # the cell does not have a neighbor for every face!
-          self.log.debug("cell %d marked on boundary",rowindex)
-          bdcells.append(rowindex)
+          self.log.debug("cell %d marked on boundary",row_idx)
+          bd_cells.append(row_idx)
         # for all of my neighbors, what faces do we have in common?
-        ownVertices   = set(cellSet.cells[rowindex])
-        interiorFaces = [ownVertices.intersection(cellSet.cells[c]) for c in localAdjacency[rowindex]]
+        own_vertices   = set(cell_set.cells[row_idx])
+        interior_faces = [
+          own_vertices.intersection(cell_set.cells[c]) for c in local_adjacency[row_idx]
+        ]
         # all possible faces of mine
-        allFaces = map(tuple,cellSet.cells[rowindex][cellSet.faceIndices])
-        bdf      = [face for face in allFaces if set(face) not in interiorFaces]
+        all_faces = map(tuple,cell_set.cells[row_idx][cell_set.face_indices])
+        bdf       = [face for face in all_faces if set(face) not in interior_faces]
         if self.log.isEnabledFor(logging.DEBUG):
-          for f in bdf:
-            self.log.debug("face %s marked on boundary" % (f,))
-        assert len(bdf)+len(interiorFaces) == facesPerCell
-        bdfaces.append(bdf)
+          for boundary_face in bdf:
+            self.log.debug("face %s marked on boundary",boundary_face)
+        assert len(bdf)+len(interior_faces) == faces_per_cell
+        bd_faces.append(bdf)
       else:
-        self.log.debug("cell %d marked interior",rowindex)
-    if fullClosure:
-      self.log.debug("%d interior cell(s), %d boundary cell(s), %d boundary face(s)",len(cellSet.cells)-len(bdcells),len(bdcells),sum(len(_) for _ in bdfaces))
-      return localAdjacency,bdcells,bdfaces
-    else:
-      self.log.debug("%d boundary face(s)",sum(len(_) for _ in bdfaces))
-      return localAdjacency,bdfaces
+        self.log.debug("cell %d marked interior",row_idx)
+    if full_closure:
+      if self.log.isEnabledFor(logging.DEBUG):
+        self.log.debug(
+          "%d interior cell(s), %d boundary cell(s), %d boundary face(s)",
+          len(cell_set.cells)-len(bd_cells),len(bd_cells),sum(len(_) for _ in bd_faces)
+        )
+      return local_adjacency,bd_cells,bd_faces
+    self.log.debug("%d boundary face(s)",sum(len(_) for _ in bd_faces))
+    return local_adjacency,bd_faces
 
-  def __duplicateVertices(self,oldVertexList,globalDict,coords,partVMap,dupCoords=None):
-    tdict = {}
-    convertableVertices = tuple(x for x in oldVertexList if x not in globalDict)
-    if len(convertableVertices):
+  def __duplicate_vertices(self,old_vertex_list,global_dict,coords,partition_vertex_map,dup_coords=None):
+    translation_dict     = {}
+    convertable_vertices = tuple(x for x in old_vertex_list if x not in global_dict)
+    if len(convertable_vertices):
       try:
-        ndv = len(coords)+len(dupCoords)
+        num_duplicatable_vertices = len(coords)+len(dup_coords)
       except TypeError as te:
         if "object of type 'NoneType' has no len()" in te.args:
-          ndv = len(coords)
+          num_duplicatable_vertices = len(coords)
         else:
           raise te
-      vCounts,newVCoords = [partVMap[x]-1 for x in convertableVertices],[]
-      for v,cnt in zip(convertableVertices,vCounts):
-        ndvLast = ndv
-        ndv    += cnt
+      new_vertex_coords = []
+      vertex_counts     = [partition_vertex_map[x]-1 for x in convertable_vertices]
+      for vertex,count in zip(convertable_vertices,vertex_counts):
+        num_duplicatable_vertices_last = num_duplicatable_vertices
+        num_duplicatable_vertices     += count
         # At least one other partition must own the boundary vertex
         # otherwise the routine generating local interior boundaries is buggy
-        assert ndv > ndvLast
-        tdict[v] = collections.deque(range(ndvLast,ndv))
-        newVCoords.extend([coords[v] for _ in range(cnt)])
-        self.log.debug("duped vertex %d -> %s",v,tdict[v])
+        assert num_duplicatable_vertices > num_duplicatable_vertices_last
+        translation_dict[vertex] = collections.deque(
+          range(num_duplicatable_vertices_last,num_duplicatable_vertices)
+        )
+        new_vertex_coords.extend([coords[vertex] for _ in range(count)])
+        self.log.debug("duped vertex %d -> %s",vertex,translation_dict[vertex])
       try:
-        dupCoords.extend(newVCoords)
+        dup_coords.extend(new_vertex_coords)
       except AttributeError as ae:
-        # dupCoords is None
+        # dup_coords is None
         if "'NoneType' object has no attribute 'extend'" in ae.args:
-          dupCoords = newVCoords.copy()
+          dup_coords = new_vertex_coords.copy()
         else:
           raise ae
     else:
       self.log.debug("no vertices to duplicate")
-    return dupCoords,tdict
+    return dup_coords,translation_dict
 
-  def __generateGlobalConversion(self,partitions,globConvDict):
-    self.dupCoords,dupCoords = None,None
+  def __generate_global_conversion(self,partitions,global_conversion_map):
+    self.dup_coords,dup_coords = None,None
     try:
-      for (idx,part),boundary in zip(enumerate(partitions),self.partitionInterfaces):
+      for (idx,part),boundary in zip(enumerate(partitions),self.partition_interfaces):
         self.log.debug("partition %d contains (%d) cells %s",idx,len(part),part)
         # old vertex IDs
-        oldVertices = {*flatten(boundary.ownFaces)}
+        old_vertices = {*flatten(boundary.own_faces)}
         # duplicate the vertices, return the duplicates new IDs
-        dupCoords,locConvDict = self.__duplicateVertices(oldVertices,globConvDict,
-                                                         self.coords,self.partVMap,dupCoords)
-        yield part,boundary,globConvDict
-        globConvDict.update(locConvDict)
+        dup_coords,local_conversion_map = self.__duplicate_vertices(
+          old_vertices,global_conversion_map,self.coords,self.partition_vertex_map,dup_coords
+        )
+        yield part,boundary,global_conversion_map
+        global_conversion_map.update(local_conversion_map)
     finally:
       # fancy trickery to update the coordinates __after__ the final yield has been called
-      self.dupCoords = np.array(dupCoords)
+      self.dup_coords = np.array(dup_coords)
     return
 
-  def remapVertices(self):
-    self.__assertPartitioned();
-    sourceVertices,mappedVertices = [],[]
-    facelen = len(self.cellData.faceIndices[0])
-    gConv   = dict()
-    for part,boundary,gConv in self.__generateGlobalConversion(self.partitions,gConv):
+  def remap_vertices(self):
+    self.__assert_partitioned();
+    source_vertices       = []
+    mapped_vertices       = []
+    vertices_per_face     = len(self.cell_data.face_indices[0])
+    global_conversion_map = dict()
+    for part,boundary,global_conversion_map in self.__generate_global_conversion(self.partitions,global_conversion_map):
       # loop through every cell in the current partition, if it contains vertices that are
       # in the global conversion map then renumber using the top of the stack
-      convertedPartition = np.array([[gConv[v][0] if v in gConv else v for v in c] for c in self.cellData.cells[part]])
+      converted_partition = np.array([
+        [global_conversion_map[v][0] if v in global_conversion_map else v for v in c] for c in self.cell_data.cells[part]
+      ])
       try:
         # assign, throws ValueError if partition is empty
-        self.cellData.cells[part] = convertedPartition
+        self.cell_data.cells[part] = converted_partition
       except ValueError:
         self.log.debug("no vertices to update")
         continue
       # for every face in the list of boundary faces, convert the boundary face vertex as
       # above
-      mappedBoundaryFaces = [[gConv[v][0] if v in gConv else v for v in f] for f in boundary.ownFaces]
-      for mbdf,bdf,src,idx in zip(mappedBoundaryFaces,*boundary):
+      mapped_boundary_faces = [[global_conversion_map[v][0] if v in global_conversion_map else v for v in f] for f in boundary.own_faces]
+      for mapped_bd_face,boundary_faces,src,idx in zip(mapped_boundary_faces,*boundary):
         # we only want to record vertices which have an entire face changed, i.e. not just
         # an edge or sole vertex
-        diffs = sum(1 for i,j in zip(mbdf,bdf) if i != j)
-        if diffs == facelen:
+        if vertices_per_face == sum(1 for i,j in zip(mapped_bd_face,boundary_faces) if i != j):
           # now find the entries of the interface partner and take the indices
           # corresponding to our face. Note that this face is __guaranteed__ to already
           # have been handled, otherwise we would not have it in the conversion dict
-          interfacePartner = self.cellData.cells[src][idx]
-          sourceVertices.append(interfacePartner)
-          mappedVertices.append(mbdf)
-          self.log.debug("updated face %s -> %s",interfacePartner,mbdf)
-      convertedBoundaryVertices = [x for x in set(flatten(boundary.ownFaces)) if x in gConv]
+          interface_partner = self.cell_data.cells[src][idx]
+          source_vertices.append(interface_partner)
+          mapped_vertices.append(mapped_bd_face)
+          self.log.debug("updated face %s -> %s",interface_partner,mapped_bd_face)
+      converted_boundary_vertices = [
+        vertex for vertex in set(flatten(boundary.own_faces)) if vertex in global_conversion_map
+      ]
       if self.log.isEnabledFor(logging.DEBUG):
-        for v in convertedBoundaryVertices:
-          prev = gConv[v].popleft()
+        for vertex in converted_boundary_vertices:
+          previous_vertex = global_conversion_map[vertex].popleft()
           try:
-            self.log.debug("updated mapping %d: %d -> %d",v,prev,gConv[v][0])
+            self.log.debug(
+              "updated mapping %d: %d -> %d",
+              vertex,previous_vertex,global_conversion_map[vertex][0]
+            )
           except IndexError as ie:
-            self.log.debug("updated mapping %d: %d -> Empty",v,prev)
+            self.log.debug("updated mapping %d: %d -> Empty",vertex,previous_vertex)
       else:
-        for v in convertedBoundaryVertices: gConv[v].popleft()
+        for vertex in converted_boundary_vertices:
+          global_conversion_map[vertex].popleft()
     if self.log.isEnabledFor(logging.DEBUG):
-      for v in gConv:
-        if len(gConv[v]):
-          self.log.error("vertex %d contains additional unapplied point-maps %s",v,gConv[v])
-    return sourceVertices,mappedVertices
+      for vertex in global_conversion_map:
+        if len(global_conversion_map[vertex]):
+          self.log.error(
+            "vertex %d contains additional unapplied point-maps %s",
+            vertex,global_conversion_map[vertex]
+          )
+    return source_vertices,mapped_vertices
 
-  def insertElements(self):
+  def insert_elements(self):
     if self.partitions:
-      self.__computePartitionInterfaceList();
-      sourceVertices,mappedVertices = self.remapVertices()
-      cells = np.hstack((mappedVertices,sourceVertices))
-      self.cohesiveCells = CellSet.fromPOD(self.cellData.cohesiveType,cells)
-      if self.dupCoords.shape:
-        self.coords = np.vstack((self.coords,self.dupCoords))
+      self.__get_partition_interface_list();
+      source_vertices,mapped_vertices = self.remap_vertices()
+      cells = np.hstack((mapped_vertices,source_vertices))
+      self.cohesive_cells = CellSet.from_POD(self.cell_data.cohesive_type,cells)
+      if self.dup_coords.shape:
+        self.coords = np.vstack((self.coords,self.dup_coords))
       else:
         self.log.debug("no coordinates were duplicated!")
       if self.log.isEnabledFor(logging.DEBUG):
-        for e in self.cohesiveCells.cells:
-          self.log.debug("created new cohesive element %s",e)
+        for element in self.cohesive_cells.cells:
+          self.log.debug("created new cohesive element %s",element)
     return self
 
-  def verifyCohesiveMesh(self):
-    if len(self.cohesiveCells):
-      cohesiveSet = set(frozenset(cell) for cell in self.cohesiveCells.cells)
-      self.log.debug("number of unique cohesive elements %s, total number of cohesive elements %s",
-                     len(cohesiveSet),len(self.cohesiveCells))
-      if len(cohesiveSet) != len(self.cohesiveCells):
+  def verify_cohesive_mesh(self):
+    if len(self.cohesive_cells):
+      cohesive_set = set(frozenset(cell) for cell in self.cohesive_cells.cells)
+      self.log.debug(
+        "number of unique cohesive elements %s, total number of cohesive elements %s",
+        len(cohesive_set),len(self.cohesive_cells)
+      )
+      if len(cohesive_set) != len(self.cohesive_cells):
         raise RuntimeError("there are duplicate cohesive cells!")
       self.log.info("mesh seems ok")
     else:
