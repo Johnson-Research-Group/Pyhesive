@@ -13,12 +13,12 @@ test_deps = [
 ]
 
 extras = {
-  'test': test_deps,
+  "test": test_deps,
 }
 
 setuptools.setup(
   name="pyhesive",
-  version="1.0",
+  version="1.0.1",
   author="Jacob Faibussowitsch",
   author_email="jacob.fai@gmail.com",
   description="Insert cohesive elements into any mesh",
@@ -30,7 +30,8 @@ setuptools.setup(
   classifiers=[
     "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 2.7",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.2",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
@@ -41,12 +42,14 @@ setuptools.setup(
     "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Scientific/Engineering :: Visualization",
     "Topic :: Software Development :: Libraries",
-    "Topic :: Utilities"
+    "Topic :: Utilities",
   ],
   keywords=[
     "mesh",
+    "meshing",
     "scientific",
     "engineering",
+    "library",
     "fem",
     "finite elements",
     "fracture",

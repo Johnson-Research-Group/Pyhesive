@@ -46,12 +46,12 @@ class DataSet(data_set_named_tuple):
 def no_except():
   yield
 
-def storeObj(filename,obj):
+def store_obj(filename,obj):
   with open(filename,"wb") as fd:
     # protocol 4 since python3.4
     pickle.dump(obj,fd)
 
-def loadObj(filename):
+def load_obj(filename):
   with open(filename, "rb") as f:
     return pickle.load(f)
 

@@ -30,6 +30,8 @@ parts/
 sdist/
 var/
 wheels/
+pyhesive.egg-info/
 *.egg-info/
 .pytest_cache/
+archive/
 

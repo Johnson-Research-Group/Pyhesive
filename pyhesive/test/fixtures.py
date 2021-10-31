@@ -15,9 +15,9 @@ import pyhesive.test.common as common
 import copy
 import pytest
 
-dataSetNamedTuple = collections.namedtuple("DataSet",["mesh","adjacency","closure","data"])
-dataSetNamedTuple.__new__.__defaults__ = (None,)*len(dataSetNamedTuple._fields)
-class DataSet(dataSetNamedTuple):
+data_set_named_tuple = collections.namedtuple("DataSet",["mesh","adjacency","closure","data"])
+data_set_named_tuple.__new__.__defaults__ = (None,)*len(data_set_named_tuple._fields)
+class DataSet(data_set_named_tuple):
   __slots__ = ()
 
 
@@ -27,7 +27,7 @@ def meshlist():
 def find_data(name,mesh,partition_list=[0]):
   filename = os.path.join(common.bin_dir,name)+".pkl"
   try:
-    data = common.loadObj(filename)
+    data = common.load_obj(filename)
   except FileNotFoundError:
     data = {
       "name"           : name,
@@ -45,7 +45,7 @@ def find_data(name,mesh,partition_list=[0]):
         "partition_interfaces" : pyh._Mesh__get_partition_interface_list(),
       }
       del pyh
-    common.storeObj(filename,data)
+    common.store_obj(filename,data)
   return data
 
 

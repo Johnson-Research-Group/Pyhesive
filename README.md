@@ -1,7 +1,8 @@
 <!-- SHIELDS -->
 [![MIT License][license-shield]][license-url]
-[![Version][version-shield]][version-url]
+[![Version][version-shield]][project-url]
 [![PyVersion][pyversion-shield]][pyversion-url]
+[![Stability][stability-shield]][project-url]
 
 
                 ____          __                 _
@@ -143,7 +144,12 @@ This material is based in part upon work supported by the Department of Energy, 
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 [license-shield]: https://img.shields.io/pypi/l/pyhesive
 [license-url]: https://gitlab.com/Jfaibussowitsch/pyhesive/-/blob/master/LICENSE
+
 [version-shield]: https://img.shields.io/pypi/v/pyhesive
-[version-url]: https://pypi.org/project/pyhesive/
+
 [pyversion-shield]: https://img.shields.io/pypi/pyversions/pyhesive
 [pyversion-url]: https://www.python.org/downloads/
+
+[stability-shield]: https://img.shields.io/pypi/status/pyhesive
+
+[project-url]: https://pypi.org/project/pyhesive/
