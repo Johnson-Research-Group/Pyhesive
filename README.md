@@ -39,6 +39,9 @@
 	<li>
 		<a href="#testing">Testing</a>
     </li>
+	<li>
+		<a href="#Acknowledgments">Testing</a>
+    </li>
   </ol>
 </details>
 
@@ -101,67 +104,72 @@ To get a local copy up and running follow these simple steps.
 
 ### Installation
 
-* Install via [pip](https://pypi.org/project/pyhesive/)
+Install via [pip](https://pypi.org/project/pyhesive/)
 
 ```sh
-pip install pyhesive
+$ python3 -m pip install pyhesive
 ```
 
-* Clone the repo
+Or clone the repository and install an editable copy from `setup.py`
 
 ```sh
-git clone https://gitlab.com/Jfaibussowitsch/pyhesive.git
+$ git clone https://gitlab.com/Jfaibussowitsch/pyhesive.git
+$ cd pyhesive
+$ python3 -m pip install -e .
 ```
 
 ### Example Usage
 
-* [**RECOMMENDED**] Command line script
-  ```sh
-  pyhesive-insert -i /path/to/mesh/file
-  ```
-  Additional commmand line arguments are listed via
-  ```sh
-  pyhesive-insert --help
-  ```
+[**RECOMMENDED**] Command line script
+```sh
+$ pyhesive-insert -i /path/to/mesh/file -b 15
+```
+Additional commmand line arguments are listed via
+```sh
+$ pyhesive-insert --help
+```
+The tool is also fully functional via Python module import
+```python
+import pyhesive
 
-* Python module import
-  ```python
-  import pyhesive
+# create the mesh from plain old data
+pyh = pyhesive.Mesh.from_POD(points,cells)
 
-  # create the mesh from plain old data
-  pyh = pyhesive.Mesh.from_POD(points,cells)
+# create partitions
+number_of_partitions = 15 # for example
+pyh.partition_mesh(number_of_partitions)
 
-  # create partitions
-  number_of_partitions = 15 # for example
-  pyh.partition_mesh(number_of_partitions)
+# insert elements between partitions
+pyh.insert_elements()
+	
+# write to file, for example in abaqus format, '.inp' extension is automatically appended
+output_file_name = "~/projects/meshes/cohesive_mesh"
+pyh.write_mesh(output_file_name,mesh_format_out="abaqus")
 
-  # insert elements between partitions
-  pyh.insert_elements()
-
-  # write to file, for example in abaqus .inp format
-  output_file_name = "~/projects/meshes/cohesive_mesh"
-  pyh.write_mesh(output_file_name,mesh_format_out="abaqus")
-  
-  # for convenience, all of the above can also be chained
-  pyhesive.Mesh.from_POD(points,cells)\
-               .partition_mesh(number_of_partitions)\
-			   .insert_elements()\
-			   .write_mesh(output_file_name,mesh_format_out="abaqus")
-  ```
+# for convenience, all of the above can also be chained
+pyhesive.Mesh.from_POD(points,cells)               \
+             .partition_mesh(number_of_partitions) \
+             .insert_elements()                    \
+             .write_mesh(output_file_name,mesh_format_out="abaqus")
+```
 
 ### Testing
 
-To run the test suite, clone the repository and from the root folder either
+To run the test suite, make sure you have [pytest](https://docs.pytest.org/en/6.2.x/) and [vermin](https://pypi.org/project/vermin/) installed. Then clone the repository, and run [pytest](https://docs.pytest.org/en/6.2.x/) from the project directory. Alternatively one can also run `make test` to test additional features such as package upload, installation and minimum Python version.
 
 ```sh
-pytest
+# to run just the correctness tests
+$ pytest
+# to run all tests
+$ make test
 ```
 
-or
+### Acknowledgments
 
-```sh
-make test
-```
+This project is supported by the [Center for Exascale-enabled Scramjet Design (CEESD)](https://ceesd.illinois.edu/) at the University of Illinois at Urbana-Champaign.
+
+This material is based in part upon work supported by the Department of Energy, National Nuclear Security Administration, under Award Number DE-NA0003963.
+
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
