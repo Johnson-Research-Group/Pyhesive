@@ -121,7 +121,7 @@ pyhesive.Mesh.from_POD(points,cells)               \
              .write_mesh(output_file_name,mesh_format_out="abaqus")
 ```
 
-### Testing
+## Testing
 
 To run the test suite, make sure you have [pytest](https://docs.pytest.org/en/6.2.x/) and [vermin](https://pypi.org/project/vermin/) installed. Then clone the repository, and run [pytest](https://docs.pytest.org/en/6.2.x/) from the project directory. Alternatively one can also run `make test` to test additional features such as package upload, installation and minimum Python version.
 
@@ -132,7 +132,7 @@ $ pytest
 $ make test
 ```
 
-### Acknowledgments
+## Acknowledgments
 
 This project is supported by the [Center for Exascale-enabled Scramjet Design (CEESD)](https://ceesd.illinois.edu/) at the University of Illinois at Urbana-Champaign.
 
