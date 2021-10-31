@@ -58,7 +58,7 @@ cumbersome face-sets along which to insert.
 Mesh I/O is facilitated by [meshio](https://github.com/nschloe/meshio), see meshio
 documentation for up-to-date list of supported mesh formats.
 
-### Built With
+## Built With
 
 * [numpy](https://numpy.org/)
 * [scipy](https://www.scipy.org/)
