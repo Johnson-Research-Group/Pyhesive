@@ -13,3 +13,30 @@ authors:
     email: jacob.fai@gmail.com
     affiliation: University Of Illinois at Urbana-Champaign
     orcid: 'https://orcid.org/0000-0002-2114-1457'
+identifiers:
+  - type: url
+    value: 'https://gitlab.com/Jfaibussowitsch/pyhesive'
+    description: Repository
+repository-code: 'https://gitlab.com/Jfaibussowitsch/pyhesive'
+url: 'https://gitlab.com/Jfaibussowitsch/pyhesive'
+abstract: >-
+  Simple, extensible python library to read a finite
+  element mesh and insert cohesive
+
+  elements. Meshes are partitioned into sectors using
+  METIS mesh partitioner, and cohesive
+
+  elements are inserted between partitions. This
+  allows an arbitrary level of insertion
+
+  (controlled primarily by the number of partitions)
+  without the user needing to specify
+
+  cumbersome face-sets along which to insert.
+keywords:
+  - Mesh
+  - Cohesive Element
+  - Partitioning
+license: MIT
+version: 1.0.0
+date-released: '2021-10-31'
