@@ -39,10 +39,11 @@ def parse_args(argv):
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
   )
   parser.add_argument("-i","--input",required=True,metavar=path,help="specify the input mesh file",dest="mesh_file_in")
-  parser.add_argument("-b","--num-partitions",metavar=integer,default=3,const=-1,nargs="?",type=int,help="specify the number of partitions to make of the mesh, use -1 to make as many partitions as there are cells",dest="num_partitions")
-  parser.add_argument("-o","--output",nargs="?",const=default_name+"."+default_format,default=default_name+"."+default_format,metavar=path,help="specify the output mesh file",dest="mesh_file_out")
-  parser.add_argument("-fi","--input-format",metavar=string,help="specify the input mesh file format, defaults to file extension",dest="mesh_format_in")
-  parser.add_argument("-fo","--output-format",nargs="?",const=default_format,default=default_format,metavar=string,help="specify the output mesh file format",dest="mesh_format_out")
+  parser.add_argument("-n","--num-partitions",metavar=integer,default=3,const=-1,nargs="?",type=int,help="specify the number of partitions to make of the mesh, use -1 to make as many partitions as there are cells",dest="num_partitions")
+  parser.add_argument("-o","--mesh-output",nargs="?",const=default_name+"."+default_format,default=default_name+"."+default_format,metavar=path,help="specify the output mesh file",dest="mesh_file_out")
+  parser.add_argument("-if","--input-format",metavar=string,help="specify the input mesh file format, defaults to file extension",dest="mesh_format_in")
+  parser.add_argument("-of","--output-format",nargs="?",const=default_format,default=default_format,metavar=string,help="specify the output mesh file format",dest="mesh_format_out")
+  parser.add_argument("-e","--embed-partitions",action="store_true",help="store the partitions as element sets when writing the output mesh")
   parser.add_argument("-l","--log-file",nargs="?",default=sys.stdout.name,metavar=path,help="log output to file instead of STDOUT",dest="stream")
   parser.add_argument("-v","--verbose",default=1,action="count",help="increase verbosity of logging statements, default no logging",dest="verbosity")
   parser.add_argument("-p","--prune",action="store_true",help="prune dangling vertices",dest="prune")
@@ -73,10 +74,11 @@ def main(argv=None):
   pyhesive.set_log_stream(args.stream)
   with pyhesive.Mesh.from_file(args.mesh_file_in,format_in=args.mesh_format_in) as pyh:
     pyh.partition_mesh(num_part=args.num_partitions)
-    pyh.insert_elements()
-    if args.verify:
-      pyh.verify_cohesive_mesh()
-    pyh.write_mesh(args.mesh_file_out,mesh_format_out=args.mesh_format_out,prune=args.prune)
+    if not args.embed_partitions:
+      pyh.insert_elements()
+      if args.verify:
+        pyh.verify_cohesive_mesh()
+    pyh.write_mesh(args.mesh_file_out,mesh_format_out=args.mesh_format_out,prune=args.prune,embed_partitions=args.embed_partitions)
   return
 
 

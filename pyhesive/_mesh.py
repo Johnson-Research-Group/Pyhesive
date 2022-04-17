@@ -139,7 +139,7 @@ class Mesh(object):
       traceback.print_exception(exc_type,exc_value,tb)
     return
 
-  def write_mesh(self,mesh_file_out,mesh_format_out=None,prune=False,return_mesh=False):
+  def write_mesh(self,mesh_file_out,mesh_format_out=None,prune=False,return_mesh=False,embed_partitions=False):
     cells = [(self.cell_data.type,self.cell_data.cells)]
     if self.cohesive_cells is not None:
       self.log.info(
@@ -149,7 +149,11 @@ class Mesh(object):
       cells.append((self.cohesive_cells.type,self.cohesive_cells.cells))
     else:
       self.log.info("generated no cohesive elements")
-    mesh_out = meshio.Mesh(self.coords,cells)
+    if embed_partitions:
+      partdict = {("group_%s" % it) : [elems] for it,elems in enumerate(self.partitions)}
+    else:
+      partdict = None
+    mesh_out = meshio.Mesh(self.coords,cells,cell_sets=partdict)
     if prune:
       mesh_out.remove_orphaned_nodes()
     if return_mesh:
@@ -159,38 +163,39 @@ class Mesh(object):
     return
 
   def partition_mesh(self,num_part=-1):
+    cell_data = self.cell_data
+    n_cells   = len(cell_data)
     if num_part == 0:
       self.partitions = tuple()
       return self
     if num_part == -1:
-      num_part = len(self.cell_data)
-    elif num_part > len(self.cell_data):
+      num_part = n_cells
+    elif num_part > n_cells:
       self.log.warning(
         "number of partitions %d > num cells %d, using num cells instead",
-        num_part,len(self.cell_data)
+        num_part,n_cells
       )
     self.adjacency_matrix        = self.compute_adjacency_matrix()
     self.cell_adjacency,bd_faces = self.compute_closure(full_closure=False)
     self.bd_set                  = set(flatten(bd_faces))
-    if num_part < len(self.cell_data):
+    if num_part < n_cells:
       ncuts,membership = pymetis.part_graph(num_part,adjacency=self.cell_adjacency)
       if ncuts == 0:
         raise RuntimeError("no partitions were made by partitioner")
-      membership      = np.array(membership)
-      self.partitions = tuple(np.argwhere(membership == p).ravel() for p in range(num_part))
+      membership = np.array(membership)
+      partitions = tuple(np.argwhere(membership == p).ravel() for p in range(num_part))
     else:
-      membership      = np.array([x for x in range(len(self.cell_data))])
-      self.partitions = tuple(np.array([x]) for x in membership)
+      membership = np.array([x for x in range(n_cells)])
+      partitions = tuple(np.array([x]) for x in membership)
+    self.partitions = partitions
     n_valid = sum(1 for partition in self.partitions if len(partition))
     self.log.info(
       "number of partitions requested %d, actual %d, average cells/partition %d",
-      num_part,n_valid,len(self.cell_data)/n_valid
+      num_part,n_valid,n_cells/n_valid
     )
     part_count_sum = sum(len(partition) for partition in self.partitions)
-    if part_count_sum != len(self.cell_data):
-      err = "Partition cell-count sum {} != global number of cells {}".format(
-        part_count_sum,len(self.cell_data)
-      )
+    if part_count_sum != n_cells:
+      err = "Partition cell-count sum {} != global number of cells {}".format(part_count_sum,n_cells)
       raise RuntimeError(err)
     return self
 
@@ -256,7 +261,6 @@ class Mesh(object):
         self.log.debug("cell %d marked locally interior",row_idx)
     self.log.debug("%d interface face(s)",sum(len(_) for _ in boundary_faces))
     try:
-    #if len(bd_faces):
       f,si,sv = zip(*flatten(boundary_faces))
     except ValueError:
       # ValueError: not enough values to unpack (expected 3, got 0)
@@ -269,7 +273,7 @@ class Mesh(object):
   def __get_partition_interface_list(self):
     self.__assert_partitioned()
     if not hasattr(self,"partition_interfaces"):
-      self.partition_interfaces = [self.__compute_partition_interface(p) for p in self.partitions]
+      self.partition_interfaces = list(map(self.__compute_partition_interface,self.partitions))
     return self.partition_interfaces
 
   def compute_adjacency_matrix(self,cells=None,format="lil",v2v=False):
@@ -345,10 +349,11 @@ class Mesh(object):
       if self.log.isEnabledFor(logging.DEBUG):
         self.log.debug(
           "%d interior cell(s), %d boundary cell(s), %d boundary face(s)",
-          len(cell_set.cells)-len(bd_cells),len(bd_cells),sum(len(_) for _ in bd_faces)
+          len(cell_set.cells)-len(bd_cells),len(bd_cells),sum(map(len,bd_faces))
         )
       return local_adjacency,bd_cells,bd_faces
-    self.log.debug("%d boundary face(s)",sum(len(_) for _ in bd_faces))
+    if self.log.isEnabledFor(logging.DEBUG):
+      self.log.debug("%d boundary face(s)",sum(map(len,bd_faces)))
     return local_adjacency,bd_faces
 
   def __duplicate_vertices(self,old_vertex_list,global_dict,coords,partition_vertex_map,dup_coords=None):
