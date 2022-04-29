@@ -23,7 +23,9 @@ elements are inserted between partitions. This allows an arbitrary level of inse
 (controlled primarily by the number of partitions) without the user needing to specify
 cumbersome face-sets along which to insert.
 
-![](https://gitlab.com/Jfaibussowitsch/pyhesive/-/raw/master/images/pyhesive-algo.png)
+<p align="center">
+  <img src="https://gitlab.com/Jfaibussowitsch/pyhesive/-/raw/master/images/pyhesive-algo.png" width="600">
+</p>
 
 ### Supported Mesh Formats
 
