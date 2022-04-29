@@ -1,0 +1,32 @@
+.. -*- mode: rst -*-
+
+                ____          __                 _
+               / __ \ __  __ / /_   ___   _____ (_)_   __ ___
+              / /_/ // / / // __ \ / _ \ / ___// /| | / // _ \
+             / ____// /_/ // / / //  __/(__  )/ / | |/ //  __/
+            /_/     \__, //_/ /_/ \___//____//_/  |___/ \___/
+                   /____/
+
+    A lightweight, flexible python package to insert cohesive elements
+
+====================================================================================================
+
+Version 1.2 (in development)
+============================
+
+Mesh
+----
+- Add ``embed_partitions`` kwarg to ``Mesh.write_mesh()`` which embeds the partitions in
+  the mesh as metadata
+
+pyhesive-insert
+---------------
+- Added ``--version`` flag to ``pyhesive-insert``
+- Changed ``-i``/``--input`` flags to be a positional argument
+- Added ``-e``/``--embed-partitions`` to embed partitions into the mesh via metadata
+  instead of creating cohesive elements
+
+Version 1.0
+===========
+- Initial release
+- Add support for triangular, tetrahedral and hexahedral elements
