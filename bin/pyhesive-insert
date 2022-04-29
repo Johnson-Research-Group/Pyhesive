@@ -34,11 +34,12 @@ def parse_args(argv):
   integer        = "<int>"
   default_format = "abaqus"
   default_name   = "pyhesiveOutput_{mesh_name}"
+
   parser         = argparse.ArgumentParser(
     description="Insert Cohesive Elements Into Arbitrary Finite Element Mesh",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
   )
-  parser.add_argument("-i","--input",required=True,metavar=path,help="specify the input mesh file",dest="mesh_file_in")
+  parser.add_argument("input",metavar=path,help="specify the input mesh file")
   parser.add_argument("-n","--num-partitions",metavar=integer,default=3,const=-1,nargs="?",type=int,help="specify the number of partitions to make of the mesh, use -1 to make as many partitions as there are cells",dest="num_partitions")
   parser.add_argument("-o","--mesh-output",nargs="?",const=default_name+"."+default_format,default=default_name+"."+default_format,metavar=path,help="specify the output mesh file",dest="mesh_file_out")
   parser.add_argument("-if","--input-format",metavar=string,help="specify the input mesh file format, defaults to file extension",dest="mesh_format_in")
@@ -48,6 +49,7 @@ def parse_args(argv):
   parser.add_argument("-v","--verbose",default=1,action="count",help="increase verbosity of logging statements, default no logging",dest="verbosity")
   parser.add_argument("-p","--prune",action="store_true",help="prune dangling vertices",dest="prune")
   parser.add_argument("--verify",help="Perform verification tests after inserting cohesive elements",action="store_true")
+  parser.add_argument("--version",help="show version information",action="version",version="%(prog)s version {}".format(pyhesive.__version__))
   parser.set_defaults(verbosity_level=40)
   args = parser.parse_args(args=argv)
 
