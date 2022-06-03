@@ -205,7 +205,7 @@ class Mesh(object):
     if cell_set is None:
       cell_set = self.cell_data
     if partitions is None:
-      self.__assert_partitioned();
+      self.__assert_partitioned()
       partitions = self.partitions
     partition_vertex_map      = (np.unique(cell_set.cells[part].ravel()) for part in partitions)
     self.partition_vertex_map = collections.Counter(flatten(partition_vertex_map))
@@ -411,7 +411,7 @@ class Mesh(object):
     return
 
   def remap_vertices(self):
-    self.__assert_partitioned();
+    self.__assert_partitioned()
     source_vertices       = []
     mapped_vertices       = []
     vertices_per_face     = len(self.cell_data.face_indices[0])
@@ -430,7 +430,9 @@ class Mesh(object):
         continue
       # for every face in the list of boundary faces, convert the boundary face vertex as
       # above
-      mapped_boundary_faces = [[global_conversion_map[v][0] if v in global_conversion_map else v for v in f] for f in boundary.own_faces]
+      mapped_boundary_faces = [
+        [global_conversion_map[v][0] if v in global_conversion_map else v for v in f] for f in boundary.own_faces
+      ]
       for mapped_bd_face,boundary_faces,src,idx in zip(mapped_boundary_faces,*boundary):
         # we only want to record vertices which have an entire face changed, i.e. not just
         # an edge or sole vertex
@@ -469,7 +471,7 @@ class Mesh(object):
 
   def insert_elements(self):
     if self.partitions:
-      self.__get_partition_interface_list();
+      self.__get_partition_interface_list()
       source_vertices,mapped_vertices = self.remap_vertices()
       cells = np.hstack((mapped_vertices,source_vertices))
       self.cohesive_cells = CellSet.from_POD(self.cell_data.cohesive_type,cells)
