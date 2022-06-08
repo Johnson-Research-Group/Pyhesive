@@ -63,7 +63,6 @@ def parse_args(argv):
     mesh_file_in_stem  = filen.split(".")[0]
     args.mesh_file_out = args.mesh_file_out.format(mesh_name=mesh_file_in_stem)
   print(args.mesh_file_out)
-  import ipdb; ipdb.set_trace()
   if args.stream is not sys.stdout.name:
     args.stream = open(args.stream[0],"w")
   else:
