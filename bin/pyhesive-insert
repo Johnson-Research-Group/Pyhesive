@@ -16,16 +16,21 @@ except ModuleNotFoundError:
   sys.path.append(os.path.join(os.getcwd(),".."))
   import pyhesive
 
-def check_sane_meshio_format(format):
+def check_sane_meshio_format(fmt):
   dummy_file = os.path.abspath('deletableDummmyFile.deleteme')
   dummy_mesh = meshio.Mesh(np.empty((0,3)),[])
-  meshio.write(dummy_file,dummy_mesh,file_format=format)
   try:
-    os.remove(dummy_file)
-  except OSError as ose:
-    import errno
-    if ose.errno != errno.ENOENT: # no such file or directory
-      raise # re-raise exception if a different error occurred
+    meshio.write(dummy_file,dummy_mesh,file_format=fmt)
+  except meshio.WriteError as we:
+    mess = "Could not write a mesh using format "+str(fmt)
+    raise RuntimeError(mess) from we
+  finally:
+    try:
+      os.remove(dummy_file)
+    except OSError as ose:
+      import errno
+      if ose.errno != errno.ENOENT: # no such file or directory
+        raise # re-raise exception if a different error occurred
   return
 
 def parse_args(argv):
@@ -53,12 +58,12 @@ def parse_args(argv):
   parser.set_defaults(verbosity_level=40)
   args = parser.parse_args(args=argv)
 
-  if args.mesh_file_in is not None:
-    _,filen  = os.path.split(args.mesh_file_in)
-    filename = filen.split(".")[0]
-  else:
-    filename = "mesh"
-    args.mesh_file_out = args.mesh_file_out.format(mesh_name=filename)
+  if args.mesh_file_out.startswith(default_name):
+    _,filen            = os.path.split(args.input)
+    mesh_file_in_stem  = filen.split(".")[0]
+    args.mesh_file_out = args.mesh_file_out.format(mesh_name=mesh_file_in_stem)
+  print(args.mesh_file_out)
+  import ipdb; ipdb.set_trace()
   if args.stream is not sys.stdout.name:
     args.stream = open(args.stream[0],"w")
   else:
@@ -74,7 +79,7 @@ def main(argv=None):
   args = parse_args(argv)
   pyhesive.set_log_level(args.verbosity_level)
   pyhesive.set_log_stream(args.stream)
-  with pyhesive.Mesh.from_file(args.mesh_file_in,format_in=args.mesh_format_in) as pyh:
+  with pyhesive.Mesh.from_file(args.input,format_in=args.mesh_format_in) as pyh:
     pyh.partition_mesh(num_part=args.num_partitions)
     if not args.embed_partitions:
       pyh.insert_elements()
