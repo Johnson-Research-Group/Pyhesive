@@ -62,7 +62,6 @@ def parse_args(argv):
     _,filen            = os.path.split(args.input)
     mesh_file_in_stem  = filen.split(".")[0]
     args.mesh_file_out = args.mesh_file_out.format(mesh_name=mesh_file_in_stem)
-  print(args.mesh_file_out)
   if args.stream is not sys.stdout.name:
     args.stream = open(args.stream[0],"w")
   else:
