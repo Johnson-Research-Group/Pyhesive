@@ -18,7 +18,7 @@ extras = {
 
 setuptools.setup(
   name="pyhesive",
-  version="1.1.2",
+  version="1.2",
   author="Jacob Faibussowitsch",
   author_email="jacob.fai@gmail.com",
   description="Insert cohesive elements into any mesh",
