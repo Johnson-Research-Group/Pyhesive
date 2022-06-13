@@ -10,11 +10,14 @@ import numpy as np
 import meshio
 try:
   import pyhesive
-except ModuleNotFoundError:
-  # silly pythonpath finagling in case someone runs this from cloning the git repo
-  # rather than installing it as a package
-  sys.path.append(os.path.join(os.getcwd(),".."))
-  import pyhesive
+except ImportError as ie:
+  if 'no module named' in ie.msg.lower():
+    # silly pythonpath finagling in case someone runs this from cloning the git repo
+    # rather than installing it as a package
+    sys.path.append(os.path.join(os.getcwd(),".."))
+    import pyhesive
+  else:
+    raise
 
 def check_sane_meshio_format(fmt):
   dummy_file = os.path.abspath('deletableDummmyFile.deleteme')

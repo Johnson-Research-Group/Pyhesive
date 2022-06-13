@@ -296,7 +296,8 @@ class Mesh(object):
       np.ones((ne*cell_dim,),dtype=np.intp),
       (cells.ravel(),element_ids.ravel(),)
     )).tocsr(copy=False)
-    if version_info <= (3,5):
+    if version_info >= (3,5):
+      # novermin infix matrix multiplication requires !2, 3.5
       c2c = v2c.T @ v2c
     else:
       c2c = v2c.T.__matmul__(v2c)
@@ -304,7 +305,11 @@ class Mesh(object):
     c2c = c2c.asformat(format,copy=False)
     self.log.debug("c2c mat size after compression %g kB",mat_size(c2c)/(1024**2))
     if v2v:
-      v2v = v2c @ v2c.T
+      if version_info >= (3,5):
+        # novermin infix matrix multiplication requires !2, 3.5
+        v2v = v2c @ v2c.T
+      else:
+        v2v = v2c.__matmul__(v2c.T)
       self.log.debug("v2v mat size %d bytes",mat_size(v2v))
       v2v = v2v.asformat(format,copy=False)
       self.log.debug("v2v mat size after compression %d bytes",mat_size(v2v))
@@ -384,10 +389,9 @@ class Mesh(object):
         dup_coords.extend(new_vertex_coords)
       except AttributeError as ae:
         # dup_coords is None
-        if "'NoneType' object has no attribute 'extend'" in ae.args:
-          dup_coords = new_vertex_coords.copy()
-        else:
+        if "'NoneType' object has no attribute 'extend'" not in ae.args:
           raise ae
+        dup_coords = new_vertex_coords.copy()
     else:
       self.log.debug("no vertices to duplicate")
     return dup_coords,translation_dict
@@ -398,7 +402,8 @@ class Mesh(object):
       for (idx,part),boundary in zip(enumerate(partitions),self.partition_interfaces):
         self.log.debug("partition %d contains (%d) cells %s",idx,len(part),part)
         # old vertex IDs
-        old_vertices = {*flatten(boundary.own_faces)}
+        old_vertices = {f for f in flatten(boundary.own_faces)}
+        #old_vertices = {*flatten(boundary.own_faces)}
         # duplicate the vertices, return the duplicates new IDs
         dup_coords,local_conversion_map = self.__duplicate_vertices(
           old_vertices,global_conversion_map,self.coords,self.partition_vertex_map,dup_coords

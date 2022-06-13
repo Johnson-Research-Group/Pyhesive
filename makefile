@@ -1,9 +1,9 @@
-LOCDIR          := .
-PYHESIVE_DIR     = $(addprefix $(LOCDIR)/, pyhesive)
-TESTDIR          = $(addprefix $(PYHESIVE_DIR)/, test)
-PYTHON3          = python3
-PIP3             = $(PYTHON3) -m pip
-PYVENV_DIRS     := $(addprefix $(LOCDIR)/, venv)
+LOCDIR       := .
+PYHESIVE_DIR  = $(addprefix $(LOCDIR)/, pyhesive)
+TESTDIR       = $(addprefix $(PYHESIVE_DIR)/, test)
+PYTHON3      ?= python3
+PIP3         ?= $(PYTHON3) -m pip
+PYVENV_DIRS  := $(addprefix $(LOCDIR)/, venv)
 
 .PHONY: test clean clean-build clean-venv clean-pyc clean-pytest $(PYVENV_DIRS) profile
 
@@ -107,24 +107,24 @@ test: create-venv vermin
 ## -- misc --
 
 clean-pyc:
-	-find . -name '*.pyc' -exec rm -f {} +
-	-find . -name '*.pyo' -exec rm -f {} +
-	-find . -name '*~' -exec rm -f {} +
-	-find . -name '__pycache__' -exec rm -rf {} +
+	-find . -name '*.pyc' -exec rm {} +
+	-find . -name '*.pyo' -exec rm {} +
+	-find . -name '*~' -exec rm {} +
+	-find . -name '__pycache__' -exec rm -r {} +
 
 clean-build:
-	-rm -rf build/
-	-rm -rf dist/
-	-rm -rf .eggs/
-	-find . -name '*.egg-info' -exec rm -rf {} +
-	-find . -name '*.egg' -exec rm -f {} +
+	-if [ -d "./build/" ]; then rm -r ./build/; fi
+	-if [ -d "./dist/"  ]; then rm -r ./dist/;  fi
+	-if [ -d "./.eggs/" ]; then rm -r ./.eggs/; fi
+	-find . -name '*.egg-info' -exec rm -r {} +
+	-find . -name '*.egg' -exec rm {} +
 
 clean-pytest:
-	-rm -rf .pytest_cache/
-	-rm -f .coverage
+	-if [ -d "./.pytest_cache/" ]; then rm -r ./.pytest_cache/; fi
+	-if [ -e "./.coverage"      ]; then rm ./.coverage;         fi
 
 clean-venv: $(PYVENV_DIRS)
-	-rm -f ./pyvenv.cfg
+	-if [ -e "./pyvenv.cfg" ]; then rm ./pyvenv.cfg; fi
 
 $(PYVENV_DIRS):
 	-${RM} -r $@

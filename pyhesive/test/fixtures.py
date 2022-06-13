@@ -28,6 +28,7 @@ def find_data(name,mesh,partition_list=[0]):
   filename = os.path.join(common.bin_dir,name)+".pkl"
   try:
     data = common.load_obj(filename)
+  # novermin 'FileNotFoundError' member requires !2, 3.3
   except FileNotFoundError:
     data = {
       "name"           : name,
