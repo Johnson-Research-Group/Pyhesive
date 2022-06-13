@@ -15,6 +15,11 @@
 Version 1.2 (in development)
 ============================
 
+General
+-------
+
+- Drop python2 support library-wide
+  
 Version 1.1
 ===========
 
