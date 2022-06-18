@@ -19,6 +19,8 @@ General
 -------
 
 - Add ``register_element_type()`` to let users register additional element types
+- Add orphaned node check in ``Mesh.verify_cohesive_mesh()``
+- Improved documentation
 
 Version 1.2
 ===========

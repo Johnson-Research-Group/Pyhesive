@@ -19,7 +19,7 @@ from ._utils import flatten,get_log_level,get_log_stream
 from ._cell_set import CellSet
 from ._partition_interface import PartitionInterface
 
-class Mesh(object):
+class Mesh:
   __slots__ = ("log","cell_data","coords","__dict__")
 
   def __init_logger(self):
@@ -142,13 +142,7 @@ class Mesh(object):
   def write_mesh(self,mesh_file_out,mesh_format_out=None,prune=False,return_mesh=False,embed_partitions=False):
     cells = [(self.cell_data.type,self.cell_data.cells)]
     if self.cohesive_cells is not None:
-      self.log.info(
-        "generated %d cohesive elements of type '%s' and %d duplicated vertices",
-        len(self.cohesive_cells),self.cohesive_cells.type,len(self.dup_coords)
-      )
       cells.append((self.cohesive_cells.type,self.cohesive_cells.cells))
-    else:
-      self.log.info("generated no cohesive elements")
     if embed_partitions:
       partdict = {("group_%s" % it) : [elems] for it,elems in enumerate(self.partitions)}
     else:
@@ -482,14 +476,17 @@ class Mesh(object):
       self.cohesive_cells = CellSet.from_POD(self.cell_data.cohesive_type,cells)
       if self.dup_coords.shape:
         self.coords = np.vstack((self.coords,self.dup_coords))
-      else:
-        self.log.debug("no coordinates were duplicated!")
       if self.log.isEnabledFor(logging.DEBUG):
         for element in self.cohesive_cells.cells:
           self.log.debug("created new cohesive element %s",element)
+      self.log.info(
+        "generated %d cohesive elements of type '%s' and %d duplicated vertices",
+        len(self.cohesive_cells),self.cohesive_cells.type,len(self.dup_coords)
+      )
     return self
 
   def verify_cohesive_mesh(self):
+    self.log.info("mesh has %d cohesive cells",len(self.cohesive_cells))
     if len(self.cohesive_cells):
       cohesive_set = set(frozenset(cell) for cell in self.cohesive_cells.cells)
       self.log.debug(
@@ -498,7 +495,11 @@ class Mesh(object):
       )
       if len(cohesive_set) != len(self.cohesive_cells):
         raise RuntimeError("there are duplicate cohesive cells!")
+      all_cells    = {n for c in self.cell_data.cells for n in c}
+      num_orphaned = abs(
+        len(all_cells.intersection({n for c in cohesive_set for n in c}))-len(self.coords)
+      )
+      if num_orphaned != 0:
+        raise RuntimeError("have %d orphaned nodes" % num_orphaned)
       self.log.info("mesh seems ok")
-    else:
-      self.log.info("mesh has no cohesive cells")
     return self
