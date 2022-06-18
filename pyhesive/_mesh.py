@@ -327,7 +327,7 @@ class Mesh(object):
     face_dim          = len(cell_set.face_indices[0])
     local_adjacency   = {}
     for row_idx,row in enumerate(adj_mat.data):
-      neighbors = (i for i,k in enumerate(row) if k == face_dim)
+      neighbors = [i for i,k in enumerate(row) if k == face_dim]
       local_adjacency[row_idx] = list(map(adj_mat.rows[row_idx].__getitem__,neighbors))
       self.log.debug("cell %d adjacent to %s",row_idx,local_adjacency[row_idx])
       if len(local_adjacency[row_idx]) != faces_per_cell:

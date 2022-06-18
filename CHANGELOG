@@ -12,8 +12,16 @@
 
 ====================================================================================================
 
-Version 1.2 (in development)
+Version 1.3 (in development)
 ============================
+
+General
+-------
+
+- Add ``register_element_type()`` to let users register additional element types
+
+Version 1.2
+===========
 
 General
 -------
