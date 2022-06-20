@@ -16,7 +16,11 @@ class CellSet(namedtuple("CellSet",["type","cells","dim","face_indices","cohesiv
 
   @classmethod
   def from_POD(cls,ctype,cells):
-    return cls(ctype,cells,*type_map[ctype])
+    try:
+      data = type_map[ctype]
+    except KeyError as ke:
+      raise RuntimeError("Unsupported cell type %s" % str(ctype)) from ke
+    return cls(ctype,cells,*data)
 
   @classmethod
   def from_CellBlock(cls,cell_block):

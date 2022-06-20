@@ -12,7 +12,6 @@ import contextlib
 import meshio
 import pytest
 import numpy as np
-import scipy.sparse as scp
 
 cur_dir = os.path.basename(os.getcwd())
 if cur_dir == "test":
@@ -55,41 +54,6 @@ def load_obj(filename):
   with open(filename, "rb") as f:
     return pickle.load(f)
 
-def assert_scipy_all_close(A,B,rtol=1e-7,atol=1e-8):
-  def _scipy_all_close_lil():
-    assert A.shape == B.shape
-    for i in range(A.get_shape()[0]):
-      rowA = A.getrowview(i).toarray()
-      rowB = B.getrowview(i).toarray()
-      np.testing.assert_allclose(rowA,rowB,rtol=rtol,atol=atol)
-    return
-
-  def _scipy_all_close_sparse():
-    # If you want to check matrix shapes as well
-    np.testing.assert_allclose(A.shape,B.shape,rtol=rtol,atol=atol)
-
-    r1,c1 = A.nonzero()
-    r2,c2 = B.nonzero()
-
-    lidx1 = np.ravel_multi_index((r1,c1),A.shape)
-    lidx2 = np.ravel_multi_index((r2,c2),B.shape)
-
-    sidx1 = lidx1.argsort()
-    sidx2 = lidx2.argsort()
-
-    np.testing.assert_allclose(lidx1[sidx1],lidx2[sidx2],rtol=rtol,atol=atol)
-    v1,v2 = A.data,B.data
-    V1,V2 = v1[sidx1],v2[sidx2]
-    np.testing.assert_allclose(V1,V2,rtol=rtol,atol=atol)
-    return
-
-  assert type(A) == type(B)
-  if isinstance(A,scp.lil_matrix):
-    _scipy_all_close_lil()
-  else:
-    _scipy_all_close_sparse()
-  return
-
 def assertNumpyArrayEqual(self,first,second,msg=None):
   assert type(first) == np.ndarray,msg
   assert type(first) == type(second),msg
@@ -102,11 +66,6 @@ def assertNumpyArrayEqual(self,first,second,msg=None):
     else:
       msg = additionalMsg
     pytest.fail(msg)
-
-def trygetattr(obj,attr):
-  if hasattr(obj,attr):
-    return getattr(obj,attr)
-  return
 
 def commonPartitionSetup(meshFileList,testFileList,partitionList,replaceFunc,testFunc):
   for meshFile,testFile,partList in zip(meshFileList,testFileList,partitionList):

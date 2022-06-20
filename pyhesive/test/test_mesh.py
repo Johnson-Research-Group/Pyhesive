@@ -9,9 +9,10 @@ import copy
 import pyhesive
 import meshio
 import pytest
-from common import no_except,assert_scipy_all_close
-import fixtures
 
+from .       import fixtures
+from .common import no_except
+from .._util import _assert_scipy_all_close
 
 meshes = fixtures.meshlist()
 
@@ -37,8 +38,8 @@ def test_create(mesh,error,request):
 def test_compute_adjacency_matrix(pyhmesh,adjacency):
   c2c,v2v = pyhmesh.compute_adjacency_matrix(v2v=True)
   c2c_expected,v2v_expected = adjacency
-  assert_scipy_all_close(c2c,c2c_expected)
-  assert_scipy_all_close(v2v,v2v_expected)
+  _assert_scipy_all_close(c2c,c2c_expected)
+  _assert_scipy_all_close(v2v,v2v_expected)
   return
 
 

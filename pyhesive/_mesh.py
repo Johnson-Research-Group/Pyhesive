@@ -15,8 +15,8 @@ import scipy
 from scipy import sparse as scp
 import numpy as np
 
-from ._utils import flatten,get_log_level,get_log_stream
-from ._cell_set import CellSet
+from ._util                import flatten,get_log_level,get_log_stream,_assert_scipy_all_close
+from ._cell_set            import CellSet
 from ._partition_interface import PartitionInterface
 
 class Mesh:
@@ -39,19 +39,35 @@ class Mesh:
     assert hasattr(self,"partitions"),"Must partition mesh first"
     return
 
-  def __init__(self,mesh):
+  @classmethod
+  def __get_cell_data(cls,mesh):
     if isinstance(mesh,meshio.Mesh):
       try:
-        self.cell_data = CellSet.from_CellBlock(mesh.cells[-1])
+        cell_block = mesh.cells[-1]
       except IndexError as ie:
-        raise ValueError("input mesh does not contain any cells") from ie
-      self.coords = mesh.points
-    elif isinstance(mesh,self.__class__):
-      self.cell_data = mesh.cell_data
-      self.coords    = mesh.coords
+        raise ValueError("Input mesh does not contain any cells") from ie
+      all_blocks = [b for b in mesh.cells if b.dim == cell_block.dim]
+      if len(all_blocks) > 1:
+        # possible hybrid mesh, or cells are in separate blocks for whatever reason
+        if len({b.type for b in all_blocks}) > 1:
+          raise ValueError("Hybrid meshes are not supported")
+        # let meshio figure out how to properly extract this for us
+        cell_type = cell_block.type
+        cell_data = CellSet.from_POD(cell_type,mesh.get_cells_type(cell_type))
+      else:
+        # only one type of top-level cell class, so create it from the block
+        cell_data = CellSet.from_CellBlock(cell_block)
+      coords = mesh.points
+    elif isinstance(mesh,cls):
+      cell_data = mesh.cell_data
+      coords    = mesh.coords
     else:
-      err = "unknown type of input mesh {}".format(type(mesh))
+      err = "Unknown type of input mesh {}".format(type(mesh))
       raise ValueError(err)
+    return cell_data,coords
+
+  def __init__(self,mesh):
+    self.cell_data,self.coords = self.__get_cell_data(mesh)
     self.cohesive_cells = None
     self.log = self.__init_logger()
     self.log.info("number of cells %d, vertices %d",len(self.cell_data.cells),len(self.coords))
@@ -79,9 +95,8 @@ class Mesh:
       if isinstance(mine,np.ndarray):
         return np.array_equiv(mine,other)
       if scp.issparse(mine):
-        from common import assert_scipy_all_close
         try:
-          assert_scipy_all_close(mine,other)
+          _assert_scipy_all_close(mine,other)
         except AssertionError:
           return False
         return True
