@@ -168,10 +168,6 @@ DE-NA0003963.
 
 .. raw:: html
 
-   <!-- MARKDOWN LINKS & IMAGES -->
-
-.. raw:: html
-
    <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 
 .. |MIT License| image:: https://img.shields.io/pypi/l/pyhesive
