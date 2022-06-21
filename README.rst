@@ -114,10 +114,34 @@ Additional commmand line arguments are listed via
 
 The tool is also fully functional via Python module import
 
-.. literalinclude:: pyhesive/test/test_example.py
-   :start-at: import pyhesive as pyh
-   :end-before: return
-   :dedent: 2
+..
+   If you change this, don't forget to make pyhesive/test/test_example.py
+   match!
+
+.. code:: python
+          
+   import pyhesive as pyh
+
+   # create the mesh from plain old data
+   mesh = pyh.Mesh.from_POD(points,cells,copy=True)
+
+   # create partitions
+   number_of_partitions = 2 # for example
+   mesh.partition_mesh(number_of_partitions)
+
+   # insert elements between partitions
+   mesh.insert_elements()
+
+   # write to file, for example in abaqus format
+   # '.inp' extension is automatically appended
+   output_file_name = my_mesh_dir/"cohesive_mesh"
+   mesh.write_mesh(output_file_name,mesh_format_out="abaqus")
+
+   # for convenience, all of the above can also be chained
+   pyh.Mesh.from_POD(points,cells)                \
+           .partition_mesh(number_of_partitions)  \
+           .insert_elements()                     \
+           .write_mesh(output_file_name,mesh_format_out="abaqus")
 
 
 Testing
