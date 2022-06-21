@@ -114,9 +114,10 @@ Additional commmand line arguments are listed via
 The tool is also fully functional via Python module import
 
 .. literalinclude:: pyhesive/test/test_example.py
-   :start-after: import pyhesive as pyh
-   :end-before: return
+   :start-after: "import pyhesive as pyh"
+   :end-before: "return"
    :dedent: 2
+
 
 Testing
 -------
