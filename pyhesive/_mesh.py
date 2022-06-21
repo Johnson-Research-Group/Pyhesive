@@ -6,6 +6,7 @@ Created on Mon Nov  9 17:44:24 2020
 @author: jacobfaibussowitsch
 """
 from sys import version_info
+import copy
 import traceback
 import logging
 import meshio
@@ -20,7 +21,7 @@ from ._cell_set            import CellSet
 from ._partition_interface import PartitionInterface
 
 class Mesh:
-  __slots__ = ("log","cell_data","coords","__dict__")
+  __slots__ = ("log","cell_data","coords","_cache","__dict__")
 
   def __init_logger(self):
     slog = logging.getLogger(self.__class__.__name__)
@@ -39,8 +40,12 @@ class Mesh:
     assert hasattr(self,"partitions"),"Must partition mesh first"
     return
 
-  @classmethod
-  def __get_cell_data(cls,mesh):
+  def __get_cell_data(self,mesh_,copy_mesh):
+    if copy_mesh:
+      mesh = copy.deepcopy(mesh_)
+    else:
+      mesh = mesh_
+
     if isinstance(mesh,meshio.Mesh):
       try:
         cell_block = mesh.cells[-1]
@@ -58,7 +63,9 @@ class Mesh:
         # only one type of top-level cell class, so create it from the block
         cell_data = CellSet.from_CellBlock(cell_block)
       coords = mesh.points
-    elif isinstance(mesh,cls):
+      self._cache["meshio_mesh"] = mesh
+      print("HAVE MESHIO MESH")
+    elif isinstance(mesh,self.__class__):
       cell_data = mesh.cell_data
       coords    = mesh.coords
     else:
@@ -66,8 +73,9 @@ class Mesh:
       raise ValueError(err)
     return cell_data,coords
 
-  def __init__(self,mesh):
-    self.cell_data,self.coords = self.__get_cell_data(mesh)
+  def __init__(self,mesh,copy=False):
+    self._cache = {}
+    self.cell_data,self.coords = self.__get_cell_data(mesh,copy)
     self.cohesive_cells = None
     self.log = self.__init_logger()
     self.log.info("number of cells %d, vertices %d",len(self.cell_data.cells),len(self.coords))
@@ -82,8 +90,8 @@ class Mesh:
     return cls(meshio.read(file_name,format_in))
 
   @classmethod
-  def from_POD(cls,points,cells):
-    return cls(meshio.Mesh(points,cells))
+  def from_POD(cls,points,cells,**kwargs):
+    return cls(meshio.Mesh(points,cells),**kwargs)
 
   def __ne__(self,other):
     return not self.__eq__(other)
@@ -122,7 +130,7 @@ class Mesh:
       return False
 
     for attr in self.__slots__:
-      if attr != "__dict__":
+      if attr not in {"__dict__","_cache"}:
         try:
           my_attr    = getattr(self,attr)
           other_attr = getattr(other,attr)
@@ -232,7 +240,7 @@ class Mesh:
       adj_mat = global_adjacency_matrix[partition,:][:,partition].to_lil()
     for row_idx,row in enumerate(adj_mat.data):
       local_neighbors = [
-        adj_mat.rows[row_idx][n] for n in (i for i,k in enumerate(row) if k == face_dim)
+        adj_mat.rows[row_idx][n] for n in [i for i,k in enumerate(row) if k == face_dim]
       ]
       self.log.debug("cell %d locally adjacent to %s",row_idx,local_neighbors)
       if len(local_neighbors) != faces_per_cell:
@@ -405,13 +413,13 @@ class Mesh:
     return dup_coords,translation_dict
 
   def __generate_global_conversion(self,partitions,global_conversion_map):
-    self.dup_coords,dup_coords = None,None
+    self.dup_coords = None
+    dup_coords      = None
     try:
-      for (idx,part),boundary in zip(enumerate(partitions),self.partition_interfaces):
+      for (idx,part),boundary in zip(enumerate(partitions),self.__get_partition_interface_list()):
         self.log.debug("partition %d contains (%d) cells %s",idx,len(part),part)
         # old vertex IDs
         old_vertices = {f for f in flatten(boundary.own_faces)}
-        #old_vertices = {*flatten(boundary.own_faces)}
         # duplicate the vertices, return the duplicates new IDs
         dup_coords,local_conversion_map = self.__duplicate_vertices(
           old_vertices,global_conversion_map,self.coords,self.partition_vertex_map,dup_coords
@@ -493,6 +501,8 @@ class Mesh:
       if self.log.isEnabledFor(logging.DEBUG):
         for element in self.cohesive_cells.cells:
           self.log.debug("created new cohesive element %s",element)
+      if self.dup_coords is None or not len(self.dup_coords):
+        raise KeyboardInterrupt
       self.log.info(
         "generated %d cohesive elements of type '%s' and %d duplicated vertices",
         len(self.cohesive_cells),self.cohesive_cells.type,len(self.dup_coords)
@@ -516,4 +526,4 @@ class Mesh:
       if num_orphaned != 0:
         raise RuntimeError("have %d orphaned nodes" % num_orphaned)
       self.log.info("mesh seems ok")
-    return self
+    return

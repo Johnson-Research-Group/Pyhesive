@@ -68,15 +68,20 @@ def empty():
   mesh = meshio.Mesh(np.empty((0,3)),[])
   return DataSet(mesh=mesh)
 
+
 @pytest.fixture
-def tetSingle():
-  mesh = meshio.Mesh(
+def tetSingleRaw():
+  return (
     np.array([[0.0,0.0,0.0],
               [1.0,0.0,0.0],
               [1.0,1.0,0.0],
               [1.0,0.0,1.0]]),
     [("tetra",np.array([[0,1,2,3]]))]
   )
+
+@pytest.fixture
+def tetSingle(tetSingleRaw):
+  mesh      = meshio.Mesh(*tetSingleRaw)
   adjacency = (scp.sparse.lil_matrix(np.array([[4]])),
                scp.sparse.lil_matrix(np.ones((4,4))))
   closure = ({0: []},[0],[[(2,1,0),(2,0,3),(2,3,1),(0,1,3)]])
@@ -84,8 +89,8 @@ def tetSingle():
   return DataSet(mesh=mesh,adjacency=adjacency,closure=closure,data=data)
 
 @pytest.fixture
-def tetDouble():
-  mesh = meshio.Mesh(
+def tetDoubleRaw():
+  return (
     np.array([
       [0.0,0.0,0.0],
       [1.0,0.0,0.0],
@@ -97,6 +102,19 @@ def tetDouble():
       [0,1,2,4],
       [0,2,3,4]]))]
   )
+
+@pytest.fixture
+def tetDouble(tetDoubleRaw):
+  r"""
+       4
+    /    \
+  3 - - - - 2
+   \         \
+    \         \
+     \         \
+      0 - - - - 1
+  """
+  mesh      = meshio.Mesh(*tetDoubleRaw)
   adjacency = (
     scp.sparse.lil_matrix(np.array([[4,3],[3,4]])),
     scp.sparse.lil_matrix(
@@ -145,19 +163,8 @@ def hexSingle():
   return DataSet(mesh=mesh,adjacency=adjacency,closure=closure,data=data)
 
 @pytest.fixture
-def hexDouble():
-  r"""
-  9 - - - - - - 10 - - - - - - 11
-  | \           | \           | \
-  |   \         |   \         |   \
-  |     6 - - - - - - 7 - - - - - - 8
-  |     |       |     |       |     |
-  3 - - | - - - 4 - - | - - - 5     |
-    \   |         \   |         \   |
-      \ |           \ |           \ |
-        0 - - - - - - 1 - - - - - - 2
-  """
-  mesh = meshio.Mesh(
+def hexDoubleRaw():
+  return (
     np.array([
       [0.0,0.0,0.0],
       [1.0,0.0,0.0],
@@ -174,6 +181,21 @@ def hexDouble():
     ]),
     [("hexahedron",np.array([[0,1,4,3,6,7,10,9],[1,2,5,4,7,8,11,10]]))]
   )
+
+@pytest.fixture
+def hexDouble(hexDoubleRaw):
+  r"""
+  9 - - - - - - 10 - - - - - - 11
+  | \           | \           | \
+  |   \         |   \         |   \
+  |     6 - - - - - - 7 - - - - - - 8
+  |     |       |     |       |     |
+  3 - - | - - - 4 - - | - - - 5     |
+    \   |         \   |         \   |
+      \ |           \ |           \ |
+        0 - - - - - - 1 - - - - - - 2
+  """
+  mesh      = meshio.Mesh(*hexDoubleRaw)
   adjacency = (scp.sparse.lil_matrix(np.array([[8,4],[4,8]])),
                scp.sparse.lil_matrix(np.array([[1,1,0,1,1,0,1,1,0,1,1,0],
                                                [1,2,1,1,2,1,1,2,1,1,2,1],
