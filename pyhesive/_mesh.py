@@ -12,8 +12,8 @@ import meshio
 import pymetis
 import collections
 import scipy
-from scipy import sparse as scp
 import numpy as np
+from scipy import sparse as scp
 
 from ._util                import flatten,get_log_level,get_log_stream,_assert_scipy_all_close
 from ._cell_set            import CellSet
@@ -274,10 +274,9 @@ class Mesh:
     except ValueError:
       # ValueError: not enough values to unpack (expected 3, got 0)
       f,si,sv = [],[],[]
-    p = PartitionInterface(
+    return PartitionInterface(
       own_faces=np.array(f),mirror_ids=np.array(si),mirror_vertices=np.array(sv)
     )
-    return p
 
   def __get_partition_interface_list(self):
     self.__assert_partitioned()

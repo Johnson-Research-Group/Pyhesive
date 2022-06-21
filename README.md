@@ -93,7 +93,7 @@ $ python3 -m pip install -e .
 
 [**RECOMMENDED**] Command line script
 ```sh
-$ pyhesive-insert -i /path/to/mesh/file -b 15
+$ pyhesive-insert -n 15 /path/to/mesh/file
 ```
 Additional commmand line arguments are listed via
 ```sh
@@ -101,7 +101,7 @@ $ pyhesive-insert --help
 ```
 The tool is also fully functional via Python module import
 ```python
-import pyhesive
+import pyhesive as pyh
 
 # create the mesh from plain old data
 pyh = pyhesive.Mesh.from_POD(points,cells)
@@ -118,10 +118,10 @@ output_file_name = "~/projects/meshes/cohesive_mesh"
 pyh.write_mesh(output_file_name,mesh_format_out="abaqus")
 
 # for convenience, all of the above can also be chained
-pyhesive.Mesh.from_POD(points,cells)               \
-             .partition_mesh(number_of_partitions) \
-             .insert_elements()                    \
-             .write_mesh(output_file_name,mesh_format_out="abaqus")
+pyh.Mesh.from_POD(points,cells)               \
+        .partition_mesh(number_of_partitions) \
+        .insert_elements()                    \
+        .write_mesh(output_file_name,mesh_format_out="abaqus")
 ```
 
 ## Testing

@@ -1,6 +1,6 @@
 import setuptools
 
-with open("README.md","r",encoding="utf-8") as fh:
+with open("README.rst","r",encoding="utf-8") as fh:
   long_description = fh.read()
 
 test_deps = [
@@ -21,6 +21,7 @@ setuptools.setup(
   version="1.2",
   author="Jacob Faibussowitsch",
   author_email="jacob.fai@gmail.com",
+  license="MIT",
   description="Insert cohesive elements into any mesh",
   long_description=long_description,
   long_description_content_type="text/markdown",
