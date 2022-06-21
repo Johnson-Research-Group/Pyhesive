@@ -24,6 +24,7 @@ specify cumbersome face-sets along which to insert.
 
 .. image:: images/pyhesive-algo.png
    :width: 600
+   :align: center
 
 Supported Mesh Formats
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -114,11 +115,8 @@ Additional commmand line arguments are listed via
 The tool is also fully functional via Python module import
 
 .. literalinclude:: pyhesive/test/test_example.py
-
-
-..
-   :start-at: "import pyhesive as pyh"
-   :end-before: "return"
+   :start-at: import pyhesive as pyh
+   :end-before: return
    :dedent: 2
 
 

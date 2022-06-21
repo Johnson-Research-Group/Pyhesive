@@ -22,7 +22,8 @@ def test_example_snippet(hexDoubleRaw,tmp_path):
   # insert elements between partitions
   mesh.insert_elements()
 
-  # write to file, for example in abaqus format, '.inp' extension is automatically appended
+  # write to file, for example in abaqus format
+  # '.inp' extension is automatically appended
   output_file_name = my_mesh_dir/"cohesive_mesh"
   mesh.write_mesh(output_file_name,mesh_format_out="abaqus")
 
