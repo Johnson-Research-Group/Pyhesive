@@ -78,7 +78,7 @@ def parse_args(argv):
 
 def main(argv=None):
   if argv is None:
-    argv = sys.argv
+    argv = sys.argv[1:]
 
   args = parse_args(argv)
   pyhesive.set_log_level(args.verbosity_level)

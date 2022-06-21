@@ -104,9 +104,14 @@ def register_element_type(name,dim,face_indices,cohesive_name=None,exist_ok=Fals
   return
 
 
-register_element_type("triangle",2,np.array([[0,1],[1,2],[2,0]]),cohesive_name="quad")
-register_element_type("tetra",3,np.array([[2,1,0],[2,0,3],[2,3,1],[0,1,3]]),cohesive_name="wedge")
-register_element_type(
-  "hexahedron",3,np.array([[0,4,7,3],[0,1,5,4],[0,3,2,1],[6,7,4,5],[2,3,7,6],[2,6,5,1]])
-)
-register_element_type("wedge",3,None) # kind of a hack
+def __register_all():
+  print("running registration")
+  register_element_type("triangle",2,np.array([[0,1],[1,2],[2,0]]),cohesive_name="quad")
+  register_element_type("tetra",3,np.array([[2,1,0],[2,0,3],[2,3,1],[0,1,3]]),cohesive_name="wedge")
+  register_element_type(
+    "hexahedron",3,np.array([[0,4,7,3],[0,1,5,4],[0,3,2,1],[6,7,4,5],[2,3,7,6],[2,6,5,1]])
+  )
+  register_element_type("wedge",3,None) # kind of a hack
+  return
+
+__register_all()
