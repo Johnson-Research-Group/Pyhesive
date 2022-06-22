@@ -292,27 +292,49 @@ class Mesh:
     return
 
 
-  def get_cell_data(self):
+  def get_cell_data(self,cohesive=False):
     """
     Get the cell data
+
+    Parameter
+    ---------
+    cohesive : bool, optional (False)
+      return cohesive or bulk cell data
 
     Returns
     -------
     cell_data : CellSet
       The cell data
     """
+    if cohesive:
+      try:
+        return self.cohesive_cells
+      except AttributeError:
+        return
     return self.cell_data
 
-  def get_cells(self):
+  def get_cells(self,cohesive=False):
     """
     Get the mesh cells
+
+    Parameter
+    ---------
+    cohesive : bool, optional (False)
+      return cohesive or bulk cells
 
     Returns
     -------
     cells : arraylike
       Array of cells
+
+    Notes
+    -----
+      Returns an empty array if cohesive is True and no cohesive elements exist
     """
-    return self.cell_data.cells
+    cell_data = self.get_cell_data(cohesive=cohesive)
+    if cohesive and cell_data is None:
+      return np.array([])
+    return cell_data.cells
 
   def get_vertices(self):
     """
@@ -494,16 +516,17 @@ class Mesh:
   def remap_vertices(self,partitions):
     source_vertices   = []
     mapped_vertices   = []
-    vertices_per_face = len(self.cell_data.face_indices[0])
+    vertices_per_face = len(self.get_cell_data().face_indices[0])
+    cells             = self.get_cells()
     for part,boundary,global_conversion_map in self.__generate_global_conversion(partitions,{}):
       # loop through every cell in the current partition, if it contains vertices that are
       # in the global conversion map then renumber using the top of the stack
       converted_partition = np.array([
-        [global_conversion_map[v][0] if v in global_conversion_map else v for v in c] for c in self.cell_data.cells[part]
+        [global_conversion_map[v][0] if v in global_conversion_map else v for v in c] for c in cells[part]
       ])
       try:
         # assign, throws ValueError if partition is empty
-        self.cell_data.cells[part] = converted_partition
+        cells[part] = converted_partition
       except ValueError:
         self.log.debug("no vertices to update")
         continue
@@ -519,7 +542,7 @@ class Mesh:
           # now find the entries of the interface partner and take the indices
           # corresponding to our face. Note that this face is __guaranteed__ to already
           # have been handled, otherwise we would not have it in the conversion dict
-          interface_partner = self.cell_data.cells[src][idx]
+          interface_partner = cells[src][idx]
           source_vertices.append(interface_partner)
           mapped_vertices.append(mapped_bd_face)
           self.log.debug("updated face %s -> %s",interface_partner,mapped_bd_face)
@@ -551,14 +574,15 @@ class Mesh:
   def insert_elements(self,partitions=None):
     if partitions is None:
       partitions = self.get_partitions()
+
     if partitions:
       source_vertices,mapped_vertices = self.remap_vertices(partitions)
       cells = np.hstack((mapped_vertices,source_vertices))
-      self.cohesive_cells = CellSet.from_POD(self.cell_data.cohesive_type,cells)
+      self.cohesive_cells = CellSet.from_POD(self.get_cell_data().cohesive_type,cells)
       if self.dup_coords.shape:
         self.coords = np.vstack((self.get_vertices(),self.dup_coords))
       if self.log.isEnabledFor(logging.DEBUG):
-        for element in self.cohesive_cells.cells:
+        for element in self.cohesive_cells:
           self.log.debug("created new cohesive element %s",element)
       if self.dup_coords is None or not len(self.dup_coords):
         raise KeyboardInterrupt
@@ -566,19 +590,21 @@ class Mesh:
         "generated %d cohesive elements of type '%s' and %d duplicated vertices",
         len(self.cohesive_cells),self.cohesive_cells.type,len(self.dup_coords)
       )
-    return
+    return self.cohesive_cells
 
   def verify_cohesive_mesh(self):
-    self.log.info("mesh has %d cohesive cells",len(self.cohesive_cells))
-    if len(self.cohesive_cells):
-      cohesive_set = set(frozenset(cell) for cell in self.cohesive_cells.cells)
+    cohesive_cells = self.get_cells(cohesive=True)
+    num_cohesive   = len(cohesive_cells)
+    self.log.info("mesh has %d cohesive cells",num_cohesive)
+    if num_cohesive:
+      cohesive_set = set(map(frozenset,cohesive_cells))
       self.log.debug(
         "number of unique cohesive elements %s, total number of cohesive elements %s",
-        len(cohesive_set),len(self.cohesive_cells)
+        len(cohesive_set),len(cohesive_cells)
       )
-      if len(cohesive_set) != len(self.cohesive_cells):
+      if len(cohesive_set) != len(cohesive_cells):
         raise RuntimeError("there are duplicate cohesive cells!")
-      all_cells    = {n for c in self.cell_data.cells for n in c}
+      all_cells    = {n for c in self.get_cells() for n in c}
       num_orphaned = abs(
         len(all_cells.intersection({n for c in cohesive_set for n in c}))-len(self.get_vertices())
       )
