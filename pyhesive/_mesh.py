@@ -64,7 +64,6 @@ class Mesh:
         cell_data = CellSet.from_CellBlock(cell_block)
       coords = mesh.points
       self._cache["meshio_mesh"] = mesh
-      print("HAVE MESHIO MESH")
     elif isinstance(mesh,self.__class__):
       cell_data = mesh.cell_data
       coords    = mesh.coords
