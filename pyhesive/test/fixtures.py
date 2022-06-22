@@ -50,23 +50,13 @@ def find_data(name,mesh,partition_list=[0]):
   return data
 
 
-# @pytest.fixture
-# def mesh(request):
-#   print(vars(request).keys())
-#   if isinstance(request.param,DataSet):
-#     return request.param.mesh
-#   elif isinstance(request.param,meshio.Mesh):
-#     return request.param
-#   elif isinstance(request.param,string):
-#     return request.getfixturevalue(request.param).mesh
-#   else:
-#     raise RuntimeError
-
+@pytest.fixture
+def emptyRaw():
+  return (np.empty((0,3)),[])
 
 @pytest.fixture
-def empty():
-  mesh = meshio.Mesh(np.empty((0,3)),[])
-  return DataSet(mesh=mesh)
+def empty(emptyRaw):
+  return DataSet(mesh=meshio.Mesh(*emptyRaw))
 
 
 @pytest.fixture
@@ -131,20 +121,10 @@ def tetDouble(tetDoubleRaw):
   data    = find_data("tetDouble",mesh,[0,-1])
   return DataSet(mesh=mesh,adjacency=adjacency,closure=closure,data=data)
 
+
 @pytest.fixture
-def hexSingle():
-  r"""
-   7 - - - - - - 6
-  | \           | \
-  |   \         |   \
-  |     4 - - - - - - 5
-  |     |       |     |
-  3 - - | - - - 2     |
-    \   |         \   |
-      \ |           \ |
-        0 - - - - - - 1
-  """
-  mesh = meshio.Mesh(
+def hexSingleRaw():
+  return (
     np.array([
       [0.0,0.0,0.0],
       [1.0,0.0,0.0],
@@ -157,6 +137,21 @@ def hexSingle():
     ]),
     [("hexahedron",np.array([[0,1,2,3,4,5,6,7]]))]
   )
+
+@pytest.fixture
+def hexSingle(hexSingleRaw):
+  r"""
+   7 - - - - - - 6
+  | \           | \
+  |   \         |   \
+  |     4 - - - - - - 5
+  |     |       |     |
+  3 - - | - - - 2     |
+    \   |         \   |
+      \ |           \ |
+        0 - - - - - - 1
+  """
+  mesh      = meshio.Mesh(*hexSingleRaw)
   adjacency = (scp.sparse.lil_matrix(np.array([[8]])),scp.sparse.lil_matrix(np.ones((8,8))))
   closure   = ({0:[]},[0],[[(0,4,7,3),(0,1,5,4),(0,3,2,1),(6,7,4,5),(2,3,7,6),(2,6,5,1)]])
   data      = find_data("hexSingle",mesh)
@@ -216,21 +211,7 @@ def hexDouble(hexDoubleRaw):
   return DataSet(mesh=mesh,adjacency=adjacency,closure=closure,data=data)
 
 @pytest.fixture
-def hexQuad():
-  r"""
-  15- - - - - - 16 - - - - - - 17
-  | \           | \            | \
-  |   \         |   \          |   \
-  |     12- - - - - - 13 - - - - - - 14
-  |     | \     |     | \      |    | \
-  6 - - | - \ - 7 - - | - \ -  8    |   \
-   \    |     9- - - - - - 10 - - - - - - 11
-     \  |     |    \  |     |    \  |     |
-        3 - - | - - - 4 - - | - - - 5     |
-          \   |         \   |         \   |
-            \ |           \ |           \ |
-              0 - - - - - - 1 - - - - - - 2
-  """
+def hexQuadRaw():
   mesh_points = np.array([
     # plane z = 0
     [0.0,0.0,0.0],
@@ -258,15 +239,34 @@ def hexQuad():
   )).T.astype(mesh_points.dtype)
   assert len(ref_mesh_points) == len(mesh_points)
   assert not len(np.setdiff1d(ref_mesh_points,mesh_points))
-  mesh = meshio.Mesh(
+  return (
     mesh_points,
     [("hexahedron",np.array([
       [0,1,4,3,9,10,13,12],
       [1,2,5,4,10,11,14,13],
       [3,4,7,6,12,13,16,15],
-      [4,5,8,7,13,14,17,16]
+    [4,5,8,7,13,14,17,16]
     ]))]
   )
+
+@pytest.fixture
+def hexQuad(hexQuadRaw):
+  r"""
+  15- - - - - - 16 - - - - - - 17
+  | \           | \            | \
+  |   \         |   \          |   \
+  |     12- - - - - - 13 - - - - - - 14
+  |     | \     |     | \      |    | \
+  6 - - | - \ - 7 - - | - \ -  8    |   \
+   \    |     9- - - - - - 10 - - - - - - 11
+     \  |     |    \  |     |    \  |     |
+        3 - - | - - - 4 - - | - - - 5     |
+          \   |         \   |         \   |
+            \ |           \ |           \ |
+              0 - - - - - - 1 - - - - - - 2
+  """
+
+  mesh      = meshio.Mesh(*hexQuadRaw)
   adjacency = (
     scp.sparse.lil_matrix(
       np.array([
@@ -316,26 +316,7 @@ def hexQuad():
   return DataSet(mesh=mesh,adjacency=adjacency,closure=closure,data=data)
 
 @pytest.fixture
-def hexOctet():
-  r"""
-  24 - - - - - -25 - - - - - - 26
-  | \           | \            | \
-  |   \         |   \          |   \
-  |     21 - - - - - -22 - - - - - - 23
-  |     | \     |     | \      |     | \
-  15 - -| - \ - 16 - -|- - \- - 17   |   \
-  | \   |    18 - - - - - - 19 - - - - -  20
-  |   \ |     | |   \ |     |  |   \ |    |
-  |     12 - -| - - - 13 - -|- - - - 14   |
-  |     | \   | |     | \   |  |    | \   |
-  6 - - | - \ | 7 - - | - \ |- 8    |   \ |
-   \    |     9 - - - - - - 10 - - - - - -11
-     \  |     |    \  |     |    \  |     |
-        3 - - | - - - 4 - - | - - - 5     |
-          \   |         \   |         \   |
-            \ |           \ |           \ |
-              0 - - - - - - 1 - - - - - - 2
-  """
+def hexOctetRaw():
   mesh_points = np.array([
     # plane z = 0
     [0.0,0.0,0.0],
@@ -373,7 +354,7 @@ def hexOctet():
   )).T.astype(mesh_points.dtype)
   assert len(ref_mesh_points) == len(mesh_points)
   assert not len(np.setdiff1d(ref_mesh_points,mesh_points))
-  mesh = meshio.Mesh(
+  return (
     mesh_points,
     [("hexahedron",np.array([
       [0,1,4,3,9,10,13,12],
@@ -386,6 +367,30 @@ def hexOctet():
       [13,14,17,16,22,23,26,25],
     ]))]
   )
+
+
+@pytest.fixture
+def hexOctet(hexOctetRaw):
+  r"""
+  24 - - - - - -25 - - - - - - 26
+  | \           | \            | \
+  |   \         |   \          |   \
+  |     21 - - - - - -22 - - - - - - 23
+  |     | \     |     | \      |     | \
+  15 - -| - \ - 16 - -|- - \- - 17   |   \
+  | \   |    18 - - - - - - 19 - - - - -  20
+  |   \ |     | |   \ |     |  |   \ |    |
+  |     12 - -| - - - 13 - -|- - - - 14   |
+  |     | \   | |     | \   |  |    | \   |
+  6 - - | - \ | 7 - - | - \ |- 8    |   \ |
+   \    |     9 - - - - - - 10 - - - - - -11
+     \  |     |    \  |     |    \  |     |
+        3 - - | - - - 4 - - | - - - 5     |
+          \   |         \   |         \   |
+            \ |           \ |           \ |
+              0 - - - - - - 1 - - - - - - 2
+  """
+  mesh      = meshio.Mesh(*hexOctetRaw)
   adjacency = (
     scp.sparse.lil_matrix(
       np.array([

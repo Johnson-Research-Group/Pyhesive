@@ -137,12 +137,6 @@ The tool is also fully functional via Python module import
    output_file_name = my_mesh_dir/"cohesive_mesh"
    mesh.write_mesh(output_file_name,mesh_format_out="abaqus")
 
-   # for convenience, all of the above can also be chained
-   pyh.Mesh.from_POD(points,cells)                \
-           .partition_mesh(number_of_partitions)  \
-           .insert_elements()                     \
-           .write_mesh(output_file_name,mesh_format_out="abaqus")
-
 
 Testing
 -------

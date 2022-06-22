@@ -162,92 +162,33 @@ class Mesh:
       traceback.print_exception(exc_type,exc_value,tb)
     return
 
-  def write_mesh(self,mesh_file_out,mesh_format_out=None,prune=False,return_mesh=False,embed_partitions=False):
-    cells = [(self.cell_data.type,self.cell_data.cells)]
-    if self.cohesive_cells is not None:
-      cells.append((self.cohesive_cells.type,self.cohesive_cells.cells))
-    if embed_partitions:
-      partdict = {("group_%s" % it) : [elems] for it,elems in enumerate(self.partitions)}
-    else:
-      partdict = None
-    mesh_out = meshio.Mesh(self.coords,cells,cell_sets=partdict)
-    if prune:
-      mesh_out.remove_orphaned_nodes()
-    if return_mesh:
-      return mesh_out
-    meshio.write(mesh_file_out,mesh_out,file_format=mesh_format_out)
-    self.log.info("wrote mesh to '%s' with format '%s'",mesh_file_out,mesh_format_out)
-    return
 
-  def partition_mesh(self,num_part=-1):
-    cell_data = self.cell_data
-    n_cells   = len(cell_data)
-    if num_part == 0:
-      self.partitions = tuple()
-      return self
-    if num_part == -1:
-      num_part = n_cells
-    elif num_part > n_cells:
-      self.log.warning(
-        "number of partitions %d > num cells %d, using num cells instead",
-        num_part,n_cells
-      )
-    self.adjacency_matrix        = self.compute_adjacency_matrix()
-    self.cell_adjacency,bd_faces = self.compute_closure(full_closure=False)
-    self.bd_set                  = set(flatten(bd_faces))
-    if num_part < n_cells:
-      ncuts,membership = pymetis.part_graph(num_part,adjacency=self.cell_adjacency)
-      if ncuts == 0:
-        raise RuntimeError("no partitions were made by partitioner")
-      membership = np.array(membership)
-      partitions = tuple(np.argwhere(membership == p).ravel() for p in range(num_part))
-    else:
-      membership = np.array([x for x in range(n_cells)])
-      partitions = tuple(np.array([x]) for x in membership)
-    self.partitions = partitions
-    n_valid = sum(1 for partition in self.partitions if len(partition))
-    self.log.info(
-      "number of partitions requested %d, actual %d, average cells/partition %d",
-      num_part,n_valid,n_cells/n_valid
-    )
-    part_count_sum = sum(len(partition) for partition in self.partitions)
-    if part_count_sum != n_cells:
-      err = "Partition cell-count sum {} != global number of cells {}".format(part_count_sum,n_cells)
-      raise RuntimeError(err)
-    return self
-
-  def __get_partition_vertex_map(self,partitions=None,cell_set=None):
+  def __get_partition_vertex_map(self,partitions,cell_set=None):
     if hasattr(self,"partition_vertex_map"):
       return self.partition_vertex_map
     if cell_set is None:
       cell_set = self.cell_data
-    if partitions is None:
-      self.__assert_partitioned()
-      partitions = self.partitions
-    partition_vertex_map      = (np.unique(cell_set.cells[part].ravel()) for part in partitions)
-    self.partition_vertex_map = collections.Counter(flatten(partition_vertex_map))
-    return self.partition_vertex_map
+    partition_vertex_map = (np.unique(cell_set.cells[part].ravel()) for part in partitions)
+    return collections.Counter(flatten(partition_vertex_map))
 
-  def __compute_partition_interface(self,partition,global_adjacency_matrix=None):
-    self.__get_partition_vertex_map()
+  def __compute_partition_interface(self,partitions,global_adjacency_matrix=None):
     boundary_faces = []
-    cell_set       = self.cell_data[partition]
+    cell_set       = self.cell_data[partitions]
     faces_per_cell = len(cell_set.face_indices)
     face_dim       = len(cell_set.face_indices[0])
     if global_adjacency_matrix is None:
-      adj_mat = self.adjacency_matrix[partition,:][:,partition]
+      adj_mat = self.adjacency_matrix[partitions,:][:,partitions]
     else:
-      adj_mat = global_adjacency_matrix[partition,:][:,partition].to_lil()
+      adj_mat = global_adjacency_matrix[partitions,:][:,partitions].to_lil()
     for row_idx,row in enumerate(adj_mat.data):
-      local_neighbors = [
-        adj_mat.rows[row_idx][n] for n in [i for i,k in enumerate(row) if k == face_dim]
-      ]
+      sub_row         = adj_mat.rows[row_idx]
+      local_neighbors = [sub_row[n] for n in [i for i,k in enumerate(row) if k == face_dim]]
       self.log.debug("cell %d locally adjacent to %s",row_idx,local_neighbors)
       if len(local_neighbors) != faces_per_cell:
         # map local neighbor index to global cell ids
-        mapped_local_set   = set(partition[local_neighbors])
+        mapped_local_set   = set(partitions[local_neighbors])
         # get the ids of all global neighbors
-        global_neighbors   = self.cell_adjacency[partition[row_idx]]
+        global_neighbors   = self.cell_adjacency[partitions[row_idx]]
         # equivalent to set(globals).difference(mapped_local_set)
         exterior_neighbors = [n for n in global_neighbors if n not in mapped_local_set]
         # for all of my exterior neighbors, what faces do we have in common?
@@ -286,96 +227,12 @@ class Mesh:
       own_faces=np.array(f),mirror_ids=np.array(si),mirror_vertices=np.array(sv)
     )
 
-  def __get_partition_interface_list(self):
-    self.__assert_partitioned()
+  def __get_partition_interface_list(self,partitions):
+    #self.__assert_partitioned()
     if not hasattr(self,"partition_interfaces"):
-      self.partition_interfaces = list(map(self.__compute_partition_interface,self.partitions))
+      self.partition_interfaces = list(map(self.__compute_partition_interface,partitions))
     return self.partition_interfaces
 
-  def compute_adjacency_matrix(self,cells=None,format="lil",v2v=False):
-    def mat_size(a):
-      if isinstance(a,scp.csr_matrix) or isinstance(a,scp.csc_matrix):
-        return a.data.nbytes+a.indptr.nbytes+a.indices.nbytes
-      elif isinstance(a,scp.lil_matrix):
-        return a.data.nbytes+a.rows.nbytes
-      elif isinstance(a,scp.coo_matrix):
-        return a.col.nbytes+a.row.nbytes+a.data.nbytes
-      return 0
-
-    if cells is None:
-      cells  = self.cell_data.cells
-    ne             = len(cells)
-    element_ids    = np.empty((ne,len(cells[0])),dtype=np.intp)
-    element_ids[:] = np.arange(ne).reshape(-1,1)
-    cell_dim       = len(element_ids[0])
-    v2c            = scp.coo_matrix((
-      np.ones((ne*cell_dim,),dtype=np.intp),
-      (cells.ravel(),element_ids.ravel(),)
-    )).tocsr(copy=False)
-    if version_info >= (3,5):
-      # novermin infix matrix multiplication requires !2, 3.5
-      c2c = v2c.T @ v2c
-    else:
-      c2c = v2c.T.__matmul__(v2c)
-    self.log.debug("c2c mat size %g kB",mat_size(c2c)/(1024**2))
-    c2c = c2c.asformat(format,copy=False)
-    self.log.debug("c2c mat size after compression %g kB",mat_size(c2c)/(1024**2))
-    if v2v:
-      if version_info >= (3,5):
-        # novermin infix matrix multiplication requires !2, 3.5
-        v2v = v2c @ v2c.T
-      else:
-        v2v = v2c.__matmul__(v2c.T)
-      self.log.debug("v2v mat size %d bytes",mat_size(v2v))
-      v2v = v2v.asformat(format,copy=False)
-      self.log.debug("v2v mat size after compression %d bytes",mat_size(v2v))
-      return c2c,v2v
-    else:
-      return c2c
-
-  def compute_closure(self,cell_set=None,adj_mat=None,full_closure=True):
-    if cell_set is None:
-      cell_set = self.cell_data
-    if adj_mat is None:
-      adj_mat = self.compute_adjacency_matrix(cell_set.cells)
-    bd_cells,bd_faces = [],[]
-    faces_per_cell    = len(cell_set.face_indices)
-    face_dim          = len(cell_set.face_indices[0])
-    local_adjacency   = {}
-    for row_idx,row in enumerate(adj_mat.data):
-      neighbors = [i for i,k in enumerate(row) if k == face_dim]
-      local_adjacency[row_idx] = list(map(adj_mat.rows[row_idx].__getitem__,neighbors))
-      self.log.debug("cell %d adjacent to %s",row_idx,local_adjacency[row_idx])
-      if len(local_adjacency[row_idx]) != faces_per_cell:
-        if full_closure:
-          # the cell does not have a neighbor for every face!
-          self.log.debug("cell %d marked on boundary",row_idx)
-          bd_cells.append(row_idx)
-        # for all of my neighbors, what faces do we have in common?
-        own_vertices   = set(cell_set.cells[row_idx])
-        interior_faces = [
-          own_vertices.intersection(cell_set.cells[c]) for c in local_adjacency[row_idx]
-        ]
-        # all possible faces of mine
-        all_faces = map(tuple,cell_set.cells[row_idx][cell_set.face_indices])
-        bdf       = [face for face in all_faces if set(face) not in interior_faces]
-        if self.log.isEnabledFor(logging.DEBUG):
-          for boundary_face in bdf:
-            self.log.debug("face %s marked on boundary",boundary_face)
-        assert len(bdf)+len(interior_faces) == faces_per_cell
-        bd_faces.append(bdf)
-      else:
-        self.log.debug("cell %d marked interior",row_idx)
-    if full_closure:
-      if self.log.isEnabledFor(logging.DEBUG):
-        self.log.debug(
-          "%d interior cell(s), %d boundary cell(s), %d boundary face(s)",
-          len(cell_set.cells)-len(bd_cells),len(bd_cells),sum(map(len,bd_faces))
-        )
-      return local_adjacency,bd_cells,bd_faces
-    if self.log.isEnabledFor(logging.DEBUG):
-      self.log.debug("%d boundary face(s)",sum(map(len,bd_faces)))
-    return local_adjacency,bd_faces
 
   def __duplicate_vertices(self,old_vertex_list,global_dict,coords,partition_vertex_map,dup_coords=None):
     translation_dict     = {}
@@ -413,16 +270,19 @@ class Mesh:
     return dup_coords,translation_dict
 
   def __generate_global_conversion(self,partitions,global_conversion_map):
-    self.dup_coords = None
-    dup_coords      = None
+    self.dup_coords,dup_coords = None,None
+    partition_interface_list   = self.__get_partition_interface_list(partitions)
+    partition_vertex_map       = self.__get_partition_vertex_map(partitions)
+    self.partition_vertex_map  = partition_vertex_map
+    coords                     = self.get_vertices()
     try:
-      for (idx,part),boundary in zip(enumerate(partitions),self.__get_partition_interface_list()):
+      for (idx,part),boundary in zip(enumerate(partitions),partition_interface_list):
         self.log.debug("partition %d contains (%d) cells %s",idx,len(part),part)
         # old vertex IDs
         old_vertices = {f for f in flatten(boundary.own_faces)}
         # duplicate the vertices, return the duplicates new IDs
         dup_coords,local_conversion_map = self.__duplicate_vertices(
-          old_vertices,global_conversion_map,self.coords,self.partition_vertex_map,dup_coords
+          old_vertices,global_conversion_map,coords,partition_vertex_map,dup_coords=dup_coords
         )
         yield part,boundary,global_conversion_map
         global_conversion_map.update(local_conversion_map)
@@ -431,13 +291,211 @@ class Mesh:
       self.dup_coords = np.array(dup_coords)
     return
 
-  def remap_vertices(self):
+
+  def get_cell_data(self):
+    """
+    Get the cell data
+
+    Returns
+    -------
+    cell_data : CellSet
+      The cell data
+    """
+    return self.cell_data
+
+  def get_cells(self):
+    """
+    Get the mesh cells
+
+    Returns
+    -------
+    cells : arraylike
+      Array of cells
+    """
+    return self.cell_data.cells
+
+  def get_vertices(self):
+    """
+    Get the mesh coordinates
+
+    Returns
+    -------
+    coords : arraylike
+      Array of all vertex coordinates
+    """
+    return self.coords
+
+  def get_partitions(self):
+    """
+    Get the partitions
+
+    Returns
+    -------
+    partitions : tuple
+      Tuple of arrays containing the cell ID's of each partition
+
+    Raises
+    ------
+    AssertionError
+      If the mesh has no partitions
+    """
     self.__assert_partitioned()
-    source_vertices       = []
-    mapped_vertices       = []
-    vertices_per_face     = len(self.cell_data.face_indices[0])
-    global_conversion_map = dict()
-    for part,boundary,global_conversion_map in self.__generate_global_conversion(self.partitions,global_conversion_map):
+    return self.partitions
+
+
+  def partition_mesh(self,num_part=-1):
+    """
+    Partition the mesh
+
+    Parameter
+    ---------
+    num_part : int, optional
+      The number of partitions to generate, default is to generate as many partitions as there
+      are elements
+
+    Returns
+    -------
+    partitions : arraylike
+      The partitions, a tuple of arrays containing the cell ID's of each partition
+
+    Raises
+    ------
+    RuntimeError
+      If the sum of cells in partitions != global cell count. This indicates an internal error
+      within the partitioning library.
+
+      If the partitioner failed to make any partitions.
+
+    Notes
+    -----
+    It is ok to pass 0 as num_part, in which case an empty tuple is returned.
+    """
+    if num_part == 0:
+      self.partitions = tuple()
+      return self.partitions
+
+    cell_data = self.cell_data
+    n_cells   = len(cell_data)
+    if num_part == -1:
+      num_part = n_cells
+    elif num_part > n_cells:
+      self.log.warning(
+        "number of partitions %d > num cells %d, using num cells instead",num_part,n_cells
+      )
+    self.adjacency_matrix        = self.compute_adjacency_matrix()
+    self.cell_adjacency,bd_faces = self.compute_closure(full_closure=False)
+    self.bd_set                  = set(flatten(bd_faces))
+    if num_part < n_cells:
+      ncuts,membership = pymetis.part_graph(num_part,adjacency=self.cell_adjacency)
+      if ncuts == 0:
+        raise RuntimeError("no partitions were made by partitioner")
+      membership = np.array(membership)
+      partitions = tuple(np.argwhere(membership == p).ravel() for p in range(num_part))
+    else:
+      membership = np.array([x for x in range(n_cells)])
+      partitions = tuple(np.array([x]) for x in membership)
+    self.partitions = partitions
+    n_valid = sum(1 for partition in self.partitions if len(partition))
+    self.log.info(
+      "number of partitions requested %d, actual %d, average cells/partition %d",
+      num_part,n_valid,n_cells/n_valid
+    )
+    part_count_sum = sum(len(partition) for partition in self.partitions)
+    if part_count_sum != n_cells:
+      err = "Partition cell-count sum {} != global number of cells {}".format(part_count_sum,n_cells)
+      raise RuntimeError(err)
+    return self.partitions
+
+  def compute_adjacency_matrix(self,cells=None,format="lil",v2v=False):
+    def mat_size(a):
+      if isinstance(a,scp.csr_matrix) or isinstance(a,scp.csc_matrix):
+        return a.data.nbytes+a.indptr.nbytes+a.indices.nbytes
+      elif isinstance(a,scp.lil_matrix):
+        return a.data.nbytes+a.rows.nbytes
+      elif isinstance(a,scp.coo_matrix):
+        return a.col.nbytes+a.row.nbytes+a.data.nbytes
+      return 0
+
+    if cells is None:
+      cells = self.get_cells()
+    ne             = len(cells)
+    element_ids    = np.empty((ne,len(cells[0])),dtype=np.intp)
+    element_ids[:] = np.arange(ne).reshape(-1,1)
+    cell_dim       = len(element_ids[0])
+    v2c            = scp.coo_matrix((
+      np.ones((ne*cell_dim,),dtype=np.intp),
+      (cells.ravel(),element_ids.ravel(),)
+    )).tocsr(copy=False)
+    if version_info >= (3,5):
+      # novermin infix matrix multiplication requires !2, 3.5
+      c2c = v2c.T @ v2c
+    else:
+      c2c = v2c.T.__matmul__(v2c)
+    self.log.debug("c2c mat size %g kB",mat_size(c2c)/(1024**2))
+    c2c = c2c.asformat(format,copy=False)
+    self.log.debug("c2c mat size after compression %g kB",mat_size(c2c)/(1024**2))
+    if v2v:
+      if version_info >= (3,5):
+        # novermin infix matrix multiplication requires !2, 3.5
+        v2v = v2c @ v2c.T
+      else:
+        v2v = v2c.__matmul__(v2c.T)
+      self.log.debug("v2v mat size %d bytes",mat_size(v2v))
+      v2v = v2v.asformat(format,copy=False)
+      self.log.debug("v2v mat size after compression %d bytes",mat_size(v2v))
+      return c2c,v2v
+    else:
+      return c2c
+
+  def compute_closure(self,cell_set=None,adj_mat=None,full_closure=True):
+    if cell_set is None:
+      cell_set = self.get_cell_data()
+    cells = cell_set.cells
+    if adj_mat is None:
+      adj_mat = self.compute_adjacency_matrix(cells)
+    bd_cells,bd_faces = [],[]
+    face_indices      = cell_set.face_indices
+    faces_per_cell    = len(face_indices)
+    face_dim          = len(face_indices[0])
+    local_adjacency   = {}
+    for row_idx,row in enumerate(adj_mat.data):
+      neighbors = [i for i,k in enumerate(row) if k == face_dim]
+      local_adjacency[row_idx] = list(map(adj_mat.rows[row_idx].__getitem__,neighbors))
+      self.log.debug("cell %d adjacent to %s",row_idx,local_adjacency[row_idx])
+      if len(local_adjacency[row_idx]) != faces_per_cell:
+        if full_closure:
+          # the cell does not have a neighbor for every face!
+          self.log.debug("cell %d marked on boundary",row_idx)
+          bd_cells.append(row_idx)
+        # for all of my neighbors, what faces do we have in common?
+        own_vertices   = set(cells[row_idx])
+        interior_faces = [own_vertices.intersection(cells[c]) for c in local_adjacency[row_idx]]
+        # all possible faces of mine
+        all_faces = map(tuple,cells[row_idx][face_indices])
+        bdf       = [face for face in all_faces if set(face) not in interior_faces]
+        if self.log.isEnabledFor(logging.DEBUG):
+          for boundary_face in bdf:
+            self.log.debug("face %s marked on boundary",boundary_face)
+        assert len(bdf)+len(interior_faces) == faces_per_cell
+        bd_faces.append(bdf)
+      else:
+        self.log.debug("cell %d marked interior",row_idx)
+    if full_closure:
+      if self.log.isEnabledFor(logging.DEBUG):
+        self.log.debug(
+          "%d interior cell(s), %d boundary cell(s), %d boundary face(s)",
+          len(cells)-len(bd_cells),len(bd_cells),sum(map(len,bd_faces))
+        )
+      return local_adjacency,bd_cells,bd_faces
+    if self.log.isEnabledFor(logging.DEBUG):
+      self.log.debug("%d boundary face(s)",sum(map(len,bd_faces)))
+    return local_adjacency,bd_faces
+
+  def remap_vertices(self,partitions):
+    source_vertices   = []
+    mapped_vertices   = []
+    vertices_per_face = len(self.cell_data.face_indices[0])
+    for part,boundary,global_conversion_map in self.__generate_global_conversion(partitions,{}):
       # loop through every cell in the current partition, if it contains vertices that are
       # in the global conversion map then renumber using the top of the stack
       converted_partition = np.array([
@@ -490,14 +548,15 @@ class Mesh:
           )
     return source_vertices,mapped_vertices
 
-  def insert_elements(self):
-    if self.partitions:
-      self.__get_partition_interface_list()
-      source_vertices,mapped_vertices = self.remap_vertices()
+  def insert_elements(self,partitions=None):
+    if partitions is None:
+      partitions = self.get_partitions()
+    if partitions:
+      source_vertices,mapped_vertices = self.remap_vertices(partitions)
       cells = np.hstack((mapped_vertices,source_vertices))
       self.cohesive_cells = CellSet.from_POD(self.cell_data.cohesive_type,cells)
       if self.dup_coords.shape:
-        self.coords = np.vstack((self.coords,self.dup_coords))
+        self.coords = np.vstack((self.get_vertices(),self.dup_coords))
       if self.log.isEnabledFor(logging.DEBUG):
         for element in self.cohesive_cells.cells:
           self.log.debug("created new cohesive element %s",element)
@@ -507,7 +566,7 @@ class Mesh:
         "generated %d cohesive elements of type '%s' and %d duplicated vertices",
         len(self.cohesive_cells),self.cohesive_cells.type,len(self.dup_coords)
       )
-    return self
+    return
 
   def verify_cohesive_mesh(self):
     self.log.info("mesh has %d cohesive cells",len(self.cohesive_cells))
@@ -521,9 +580,26 @@ class Mesh:
         raise RuntimeError("there are duplicate cohesive cells!")
       all_cells    = {n for c in self.cell_data.cells for n in c}
       num_orphaned = abs(
-        len(all_cells.intersection({n for c in cohesive_set for n in c}))-len(self.coords)
+        len(all_cells.intersection({n for c in cohesive_set for n in c}))-len(self.get_vertices())
       )
       if num_orphaned != 0:
         raise RuntimeError("have %d orphaned nodes" % num_orphaned)
       self.log.info("mesh seems ok")
+    return
+
+  def write_mesh(self,mesh_file_out,mesh_format_out=None,prune=False,return_mesh=False,embed_partitions=False):
+    cells = [(self.cell_data.type,self.cell_data.cells)]
+    if self.cohesive_cells is not None:
+      cells.append((self.cohesive_cells.type,self.cohesive_cells.cells))
+    if embed_partitions:
+      partdict = {("group_%s" % it) : [elems] for it,elems in enumerate(self.partitions)}
+    else:
+      partdict = None
+    mesh_out = meshio.Mesh(self.coords,cells,cell_sets=partdict)
+    if prune:
+      mesh_out.remove_orphaned_nodes()
+    if return_mesh:
+      return mesh_out
+    meshio.write(mesh_file_out,mesh_out,file_format=mesh_format_out)
+    self.log.info("wrote mesh to '%s' with format '%s'",mesh_file_out,mesh_format_out)
     return
