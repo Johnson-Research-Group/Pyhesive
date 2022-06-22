@@ -597,7 +597,9 @@ class Mesh:
       partdict = None
     mesh_out = meshio.Mesh(self.coords,cells,cell_sets=partdict)
     if prune:
-      mesh_out.remove_orphaned_nodes()
+      import warnings
+
+      warnings.warn("prune argument is deprecated",category=DeprecationWarning)
     if return_mesh:
       return mesh_out
     meshio.write(mesh_file_out,mesh_out,file_format=mesh_format_out)

@@ -20,6 +20,9 @@ General
 
 - Add ``register_element_type()`` to let users register additional element types
 - Add orphaned node check in ``Mesh.verify_cohesive_mesh()``
+- Add ``Mesh.get_cell_data()``, ``Mesh.get_cells()``, ``Mesh.get_vertices()``, and ``Mesh.get_partitions()``
+- ``Mesh.insert_elements()`` now takes an optional ``partitions`` kwarg, to insert elements around the given partition
+- Deprecated the ``prune`` kwarg to ``Mesh.write_mesh()`` as it has been removed from meshio. Passing ``prune = True`` no longer does anything.
 - Improved documentation
 
 Version 1.2
