@@ -264,10 +264,10 @@ class Mesh:
     return dup_coords,translation_dict
 
   def __generate_global_conversion(self,partitions,global_conversion_map):
-    self.dup_coords,dup_coords = None,None
-    partition_interface_list   = self.__get_partition_interface_list(partitions)
-    partition_vertex_map       = self.__get_partition_vertex_map(partitions)
-    coords                     = self.get_vertices()
+    dup_coords               = None
+    partition_interface_list = self.__get_partition_interface_list(partitions)
+    partition_vertex_map     = self.__get_partition_vertex_map(partitions)
+    coords                   = self.get_vertices()
     try:
       for (idx,part),boundary in zip(enumerate(partitions),partition_interface_list):
         self.log.debug("partition %d contains (%d) cells %s",idx,len(part),part)
@@ -584,6 +584,7 @@ class Mesh:
     if partitions is None:
       partitions = self.get_partitions()
 
+    self.dup_coords = None
     if partitions:
       source_vertices,mapped_vertices = self.remap_vertices(partitions)
       cells          = np.hstack((mapped_vertices,source_vertices))
@@ -600,8 +601,6 @@ class Mesh:
         len(cohesive_cells),cohesive_type,len(self.dup_coords)
       )
       self.cohesive_cells = cohesive_cells
-    else:
-      self.dup_coords = None
     return self.cohesive_cells,self.dup_coords
 
   def verify_cohesive_mesh(self):

@@ -55,7 +55,6 @@ def parse_args(argv):
   parser.add_argument("-e","--embed-partitions",action="store_true",help="store the partitions as element sets when writing the output mesh")
   parser.add_argument("-l","--log-file",nargs="?",default=sys.stdout.name,metavar=path,help="log output to file instead of STDOUT",dest="stream")
   parser.add_argument("-v","--verbose",default=1,action="count",help="increase verbosity of logging statements, default no logging",dest="verbosity")
-  parser.add_argument("-p","--prune",action="store_true",help="prune dangling vertices",dest="prune")
   parser.add_argument("--verify",help="Perform verification tests after inserting cohesive elements",action="store_true")
   parser.add_argument("--version",help="show version information",action="version",version="%(prog)s version {}".format(pyhesive.__version__))
   parser.set_defaults(verbosity_level=40)
@@ -89,7 +88,9 @@ def main(argv=None):
       pyh.insert_elements()
       if args.verify:
         pyh.verify_cohesive_mesh()
-    pyh.write_mesh(args.mesh_file_out,mesh_format_out=args.mesh_format_out,prune=args.prune,embed_partitions=args.embed_partitions)
+    pyh.write_mesh(
+      args.mesh_file_out,mesh_format_out=args.mesh_format_out,embed_partitions=args.embed_partitions
+    )
   return
 
 
