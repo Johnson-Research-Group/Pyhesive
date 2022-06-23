@@ -38,6 +38,8 @@ class CellSet(namedtuple("CellSet",["type","cells","dim","face_indices","cohesiv
     return not self.__eq__(other)
 
   def __eq__(self,other):
+    if other is None:
+      return False
     if isinstance(other,CellSet):
       if self.type != other.type:
         return False
@@ -52,6 +54,9 @@ class CellSet(namedtuple("CellSet",["type","cells","dim","face_indices","cohesiv
       return True
     return NotImplemented
 
+
+  def __str__(self):
+    return f"CellSet(len: {len(self)}, dim: {self.dim}, type: '{self.type}', cohesive type: '{self.cohesive_type}')"
 
 def register_element_type(name,dim,face_indices,cohesive_name=None,exist_ok=False):
   """

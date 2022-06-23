@@ -21,7 +21,7 @@ from ._cell_set            import CellSet
 from ._partition_interface import PartitionInterface
 
 class Mesh:
-  __slots__ = ("log","cell_data","coords","_cache","__dict__")
+  __slots__ = ("log","cell_data","coords","cohesive_cells","_cache","__dict__")
 
   def __init_logger(self):
     slog = logging.getLogger(self.__class__.__name__)
@@ -46,6 +46,7 @@ class Mesh:
     else:
       mesh = mesh_
 
+    cohesive_cells = None
     if isinstance(mesh,meshio.Mesh):
       try:
         cell_block = mesh.cells[-1]
@@ -65,17 +66,18 @@ class Mesh:
       coords = mesh.points
       self._cache["meshio_mesh"] = mesh
     elif isinstance(mesh,self.__class__):
-      cell_data = mesh.cell_data
-      coords    = mesh.coords
+      cell_data      = mesh.cell_data
+      coords         = mesh.coords
+      cohesive_cells = mesh.cohesive_cells
+      print(vars(mesh))
     else:
       err = "Unknown type of input mesh {}".format(type(mesh))
       raise ValueError(err)
-    return cell_data,coords
+    return cell_data,coords,cohesive_cells
 
   def __init__(self,mesh,copy=False):
     self._cache = {}
-    self.cell_data,self.coords = self.__get_cell_data(mesh,copy)
-    self.cohesive_cells = None
+    self.cell_data,self.coords,self.cohesive_cells = self.__get_cell_data(mesh,copy)
     self.log = self.__init_logger()
     self.log.info("number of cells %d, vertices %d",len(self.cell_data.cells),len(self.coords))
     self.log.info(
@@ -125,33 +127,28 @@ class Mesh:
     if not isinstance(other,self.__class__):
       return NotImplemented
 
-    if len(self.__slots__) != len(other.__slots__):
+    if self.cell_data != other.cell_data:
       return False
 
-    for attr in self.__slots__:
-      if attr not in {"__dict__","_cache"}:
-        try:
-          my_attr    = getattr(self,attr)
-          other_attr = getattr(other,attr)
-        except AttributeError:
-          return False
-        if not attr_eq(my_attr,other_attr):
-          return False
-
-    self_dict  = self.__dict__
-    other_dict = other.__dict__
-    if len(self_dict.keys()) != len(other_dict.keys()):
+    if not np.array_equiv(self.coords,other.coords):
       return False
 
-    self_items,other_items = sorted(self_dict.items()),sorted(other_dict.items())
-    for (self_key,self_val),(other_key,other_val) in zip(self_items,other_items):
-      try:
-        if (self_key != other_key) or (self_val != other_val):
-          return False
-      except ValueError:
-        if not attr_eq(self_val,other_val):
-          return False
+    other_cohesive = getattr(other,'cohesive_cells',None)
+    if other_cohesive is None:
+      other_cohesive = other.__dict__.get('cohesive_cells')
+    if self.cohesive_cells != other_cohesive:
+      return False
+
     return True
+
+  def __str__(self):
+    cell_data = self.get_cell_data()
+    return '\n'.join([
+      "Mesh:",
+      f"dimension:      {cell_data.dim}",
+      f"cells:          {cell_data}",
+      f"cohesive cells: {self.get_cell_data(cohesive=True)}"
+    ])
 
   def __enter__(self):
     return self
@@ -163,16 +160,14 @@ class Mesh:
 
 
   def __get_partition_vertex_map(self,partitions,cell_set=None):
-    if hasattr(self,"partition_vertex_map"):
-      return self.partition_vertex_map
     if cell_set is None:
-      cell_set = self.cell_data
+      cell_set = self.get_cell_data()
     partition_vertex_map = (np.unique(cell_set.cells[part].ravel()) for part in partitions)
     return collections.Counter(flatten(partition_vertex_map))
 
   def __compute_partition_interface(self,partitions,global_adjacency_matrix=None):
     boundary_faces = []
-    cell_set       = self.cell_data[partitions]
+    cell_set       = self.get_cell_data()[partitions]
     faces_per_cell = len(cell_set.face_indices)
     face_dim       = len(cell_set.face_indices[0])
     if global_adjacency_matrix is None:
@@ -272,7 +267,6 @@ class Mesh:
     self.dup_coords,dup_coords = None,None
     partition_interface_list   = self.__get_partition_interface_list(partitions)
     partition_vertex_map       = self.__get_partition_vertex_map(partitions)
-    self.partition_vertex_map  = partition_vertex_map
     coords                     = self.get_vertices()
     try:
       for (idx,part),boundary in zip(enumerate(partitions),partition_interface_list):
@@ -328,7 +322,7 @@ class Mesh:
 
     Notes
     -----
-      Returns an empty array if cohesive is True and no cohesive elements exist
+    Returns an empty array if cohesive is True and no cohesive elements exist
     """
     cell_data = self.get_cell_data(cohesive=cohesive)
     if cohesive and cell_data is None:
@@ -571,25 +565,44 @@ class Mesh:
     return source_vertices,mapped_vertices
 
   def insert_elements(self,partitions=None):
+    """
+    Insert cohesive linkage elements into the mesh according to partitions
+
+    Parameter
+    ---------
+    partitions : arraylike, optional
+      Array of cell paritions between which to insert elements. If not given, defaults to
+      partition list generated from a previous call to Mesh.partition_mesh().
+
+    Returns
+    -------
+    cohesive_cells : arraylike
+      Array of newly created cohesive elements
+    dup_coords : arraylike
+      Array of newly duplicated vertices
+    """
     if partitions is None:
       partitions = self.get_partitions()
 
     if partitions:
       source_vertices,mapped_vertices = self.remap_vertices(partitions)
-      cells = np.hstack((mapped_vertices,source_vertices))
-      self.cohesive_cells = CellSet.from_POD(self.get_cell_data().cohesive_type,cells)
+      cells          = np.hstack((mapped_vertices,source_vertices))
+      cohesive_type  = self.get_cell_data().cohesive_type
+      cohesive_cells = CellSet.from_POD(cohesive_type,cells)
+      assert cohesive_cells.type == cohesive_type
       if self.dup_coords.shape:
-        self.coords = np.vstack((self.get_vertices(),self.dup_coords))
+        self.coords = np.vstack((self.coords,self.dup_coords))
       if self.log.isEnabledFor(logging.DEBUG):
-        for element in self.cohesive_cells:
+        for element in cohesive_cells:
           self.log.debug("created new cohesive element %s",element)
-      if self.dup_coords is None or not len(self.dup_coords):
-        raise KeyboardInterrupt
       self.log.info(
         "generated %d cohesive elements of type '%s' and %d duplicated vertices",
-        len(self.cohesive_cells),self.cohesive_cells.type,len(self.dup_coords)
+        len(cohesive_cells),cohesive_type,len(self.dup_coords)
       )
-    return self.cohesive_cells
+      self.cohesive_cells = cohesive_cells
+    else:
+      self.dup_coords = None
+    return self.cohesive_cells,self.dup_coords
 
   def verify_cohesive_mesh(self):
     cohesive_cells = self.get_cells(cohesive=True)
@@ -613,13 +626,15 @@ class Mesh:
     return
 
   def write_mesh(self,mesh_file_out,mesh_format_out=None,prune=False,return_mesh=False,embed_partitions=False):
-    cells = [(self.cell_data.type,self.cell_data.cells)]
+    cell_data = self.get_cell_data()
+    cells     = [(cell_data.type,cell_data.cells)]
     if self.cohesive_cells is not None:
       cells.append((self.cohesive_cells.type,self.cohesive_cells.cells))
     if embed_partitions:
-      partdict = {("group_%s" % it) : [elems] for it,elems in enumerate(self.partitions)}
+      partdict = {("group_%s" % it) : [elems] for it,elems in enumerate(self.get_partitions())}
     else:
       partdict = None
+    #coords   = np.vstack((self.get_vertices(),self.dup_coords))
     mesh_out = meshio.Mesh(self.coords,cells,cell_sets=partdict)
     if prune:
       import warnings

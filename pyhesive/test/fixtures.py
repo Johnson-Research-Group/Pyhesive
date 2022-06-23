@@ -368,7 +368,6 @@ def hexOctetRaw():
     ]))]
   )
 
-
 @pytest.fixture
 def hexOctet(hexOctetRaw):
   r"""
@@ -470,20 +469,29 @@ def fixt(request):
 
 @pytest.fixture
 def mesh(request):
-  return get_fixture(request).mesh
+  result = get_fixture(request)
+  if isinstance(result,DataSet):
+    return result.mesh
+  if isinstance(result,tuple):
+    return result
+  raise TypeError(type(result))
 
 @pytest.fixture
 def pyhmesh(request):
-  yield pyhesive.Mesh(get_fixture(request).mesh)
+  return pyhesive.Mesh(get_fixture(request).mesh)
 
 @pytest.fixture
 def adjacency(request):
-  yield get_fixture(request).adjacency
+  return get_fixture(request).adjacency
 
 @pytest.fixture
 def closure(request):
-  yield get_fixture(request).closure
+  return get_fixture(request).closure
 
 @pytest.fixture
 def partition_data(request):
-  yield get_fixture(request).data["partition_data"]
+  return get_fixture(request).data["partition_data"]
+
+@pytest.fixture
+def replace_output(request):
+  return request.config.getoption("--pyhesive-replace")

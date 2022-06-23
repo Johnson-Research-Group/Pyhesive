@@ -7,7 +7,8 @@ pytest_plugins = [
 ]
 
 def pytest_addoption(parser):
-  parser.addoption("--pyhesive-replace", action="store_true", help="replace output files during tests")
+  parser.addoption("--pyhesive-replace",action="store_true",help="replace output files during tests")
+  return
 
 def pytest_report_header(config):
   msg = ["Command line arguments:"]

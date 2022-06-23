@@ -23,9 +23,8 @@ meshes = fixtures.meshlist()
   ("hexSingleRaw",no_except()),
   ("hexQuadRaw"  ,no_except()),
   ("hexOctetRaw" ,no_except()),
-])
+],indirect=["mesh"])
 def test_create_pod(mesh,error,request):
-  mesh = request.getfixturevalue(mesh)
   assert isinstance(mesh,tuple)
   points,cells = mesh
   with error:
@@ -102,6 +101,7 @@ def test_full_stack(mesh,partition_data,subtests):
       pyh.partition_mesh(numpart)
       pyh.insert_elements()
       assert pyh == data["pyhesive_mesh"]
+
   return
 
 
