@@ -19,6 +19,8 @@ General
 -------
 
 - Add ``register_element_type()`` to let users register additional element types
+- Add ``unregister_element_type()`` to undo ``register_element_type()``
+- Add ``element_type_is_registered()`` to query whether an element type is registered
 - Add orphaned node check in ``Mesh.verify_cohesive_mesh()``
 - Add ``Mesh.get_cell_data()``, ``Mesh.get_cells()``, ``Mesh.get_vertices()``, and ``Mesh.get_partitions()``
 - ``Mesh.insert_elements()`` now takes an optional ``partitions`` kwarg, to insert elements around the given partition

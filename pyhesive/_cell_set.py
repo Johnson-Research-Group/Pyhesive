@@ -6,7 +6,8 @@ Created on Tue Aug 31 19:59:21 2021
 @author: jacobfaibussowitsch
 """
 from collections import namedtuple
-from meshio import CellBlock
+from meshio      import CellBlock
+
 import numpy as np
 
 type_map = {}
@@ -103,6 +104,38 @@ def register_element_type(name,dim,face_indices,cohesive_name=None,exist_ok=Fals
   type_map[name] = (dim,face_indices,cohesive_name)
   return
 
+def unregister_element_type(name):
+  """
+  Un-register a bulk element type from the library
+
+  Parameter
+  ---------
+  name : str
+    Name of the bulk element type to remove
+
+  Returns
+  -------
+  value : tuple
+    If name was registered, a tuple of dimension, face_indices, and cohesive_name. If name was
+    not registered the tuple is empty
+  """
+  return type_map.pop(name,tuple())
+
+def element_type_is_registered(name):
+  """
+  Determine whether a bulk element type is registered
+
+  Parameter
+  ---------
+  name : str
+    Name of the bulk element type
+
+  Returns
+  -------
+  registered : bool
+    True if name is registered, False otherwise
+  """
+  return name in type_map
 
 def __register_all():
   register_element_type("triangle",2,np.array([[0,1],[1,2],[2,0]]),cohesive_name="quad")
