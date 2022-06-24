@@ -21,29 +21,43 @@ class DataSet(data_set_named_tuple):
   __slots__ = ()
 
 
-def meshlist():
-  return ["tetSingle","tetDouble","hexSingle","hexDouble","hexQuad","hexOctet"]
+_meshlist = []
 
-def find_data(name,mesh,partition_list=[0]):
+def meshlist():
+  return _meshlist[:]
+
+def register_mesh(func):
+  _meshlist.append(func.__name__)
+  return func
+
+
+def find_data(name,mesh,partition_list=None):
   filename = os.path.join(common.bin_dir,name)+".pkl"
   try:
     data = common.load_obj(filename)
   # novermin 'FileNotFoundError' member requires !2, 3.3
   except FileNotFoundError:
+    from copy import deepcopy as _deepcopy
+
     data = {
-      "name"           : name,
-      "mesh"           : mesh,
+      "name"           : _deepcopy(name),
+      "mesh"           : _deepcopy(mesh),
       "partition_data" : dict()
     }
+    if partition_list is None:
+      partition_list = [0]
     for part in partition_list:
-      pyh = copy.deepcopy(pyhesive.Mesh(mesh))
-      pyh.partition_mesh(part)
+      pyh                 = copy.deepcopy(pyhesive.Mesh(mesh))
+      partition           = pyh.partition_mesh(part)
+      cohesive,dup_coords = pyh.insert_elements()
       data["partition_data"][part] = {
         # must deep copy since insertElements() is not guaranteed to create the
         # intermediate structures
-        "pyhesive_mesh"        : copy.deepcopy(pyh.insert_elements()),
-        "partition_vertex_map" : pyh._Mesh__get_partition_vertex_map(),
-        "partition_interfaces" : pyh._Mesh__get_partition_interface_list(),
+        "pyhesive_mesh"        : _deepcopy(pyh),
+        "cohesive_cells"       : _deepcopy(cohesive),
+        "dup_coords"           : _deepcopy(dup_coords),
+        "partition_vertex_map" : _deepcopy(pyh._Mesh__get_partition_vertex_map(partition)),
+        "partition_interfaces" : _deepcopy(pyh._Mesh__get_partition_interface_list(partition)),
       }
       del pyh
     common.store_obj(filename,data)
@@ -62,6 +76,30 @@ def empty(emptyRaw):
   return DataSet(mesh=meshio.Mesh(*emptyRaw))
 
 
+######
+# 2D #
+######
+def getTriSingleRaw():
+  return np.array([[0.0,0.0,0.0],[1.0,0.0,0.0], [1.0,1.0,0.0]],),[("triangle",[[0,1,2]])],
+
+
+@pytest.fixture
+def triSingleRaw():
+  return getTriSingleRaw()
+
+@register_mesh
+@pytest.fixture
+def triSingle(triSingleRaw):
+  mesh      = meshio.Mesh(*triSingleRaw)
+  adjacency = (scp.sparse.lil_matrix(np.array([[3]])),scp.sparse.lil_matrix(np.ones((3,3))))
+  closure   = ({0: []},[0],[[(0,1),(1,2),(2,0)]])
+  data      = find_data("triSingle",mesh)
+  return DataSet(mesh=mesh,adjacency=adjacency,closure=closure,data=data)
+
+######
+# 3D #
+######
+
 @pytest.fixture
 def tetSingleRaw():
   return (
@@ -72,6 +110,7 @@ def tetSingleRaw():
     [("tetra",np.array([[0,1,2,3]]))]
   )
 
+@register_mesh
 @pytest.fixture
 def tetSingle(tetSingleRaw):
   mesh      = meshio.Mesh(*tetSingleRaw)
@@ -96,6 +135,7 @@ def tetDoubleRaw():
       [0,2,3,4]]))]
   )
 
+@register_mesh
 @pytest.fixture
 def tetDouble(tetDoubleRaw):
   r"""
@@ -141,6 +181,8 @@ def hexSingleRaw():
     [("hexahedron",np.array([[0,1,2,3,4,5,6,7]]))]
   )
 
+@register_mesh
+
 @pytest.fixture
 def hexSingle(hexSingleRaw):
   r"""
@@ -179,6 +221,8 @@ def hexDoubleRaw():
     ]),
     [("hexahedron",np.array([[0,1,4,3,6,7,10,9],[1,2,5,4,7,8,11,10]]))]
   )
+
+@register_mesh
 
 @pytest.fixture
 def hexDouble(hexDoubleRaw):
@@ -255,6 +299,7 @@ def getHexQuadRaw():
 def hexQuadRaw():
   return getHexQuadRaw()
 
+@register_mesh
 @pytest.fixture
 def hexQuad(hexQuadRaw):
   r"""
@@ -374,6 +419,7 @@ def hexOctetRaw():
     ]))]
   )
 
+@register_mesh
 @pytest.fixture
 def hexOctet(hexOctetRaw):
   r"""

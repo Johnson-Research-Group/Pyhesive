@@ -52,11 +52,11 @@ def no_except():
 
 def store_obj(filename,obj):
   with open(filename,"wb") as fd:
-    # protocol 4 since python3.4
     pickle.dump(obj,fd)
+  return
 
 def load_obj(filename):
-  with open(filename, "rb") as f:
+  with open(filename,"rb") as f:
     return pickle.load(f)
 
 def assertNumpyArrayEqual(self,first,second,msg=None):

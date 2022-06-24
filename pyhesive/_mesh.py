@@ -389,6 +389,9 @@ class Mesh:
 
       If the partitioner failed to make any partitions.
 
+    ValueError
+      If num_part is < 0 and does not equal -1
+
     Notes
     -----
     It is ok to pass 0 as num_part, in which case an empty tuple is returned.
@@ -398,7 +401,9 @@ class Mesh:
     if num_part != 0:
       cell_data = self.get_cell_data()
       n_cells   = len(cell_data)
-      if num_part == -1:
+      if num_part < 0:
+        if num_part != -1:
+          raise ValueError("invalid number of partitions requested: %d" % int(num_part))
         num_part = n_cells
       elif num_part > n_cells:
         self.log.warning(
