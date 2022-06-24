@@ -50,9 +50,12 @@ def find_data(name,mesh,partition_list=[0]):
   return data
 
 
+def getEmptyRaw():
+  return (np.empty((0,3)),[])
+
 @pytest.fixture
 def emptyRaw():
-  return (np.empty((0,3)),[])
+  return getEmptyRaw()
 
 @pytest.fixture
 def empty(emptyRaw):
@@ -210,8 +213,7 @@ def hexDouble(hexDoubleRaw):
   data    = find_data("hexDouble",mesh,[0,-1])
   return DataSet(mesh=mesh,adjacency=adjacency,closure=closure,data=data)
 
-@pytest.fixture
-def hexQuadRaw():
+def getHexQuadRaw():
   mesh_points = np.array([
     # plane z = 0
     [0.0,0.0,0.0],
@@ -245,9 +247,13 @@ def hexQuadRaw():
       [0,1,4,3,9,10,13,12],
       [1,2,5,4,10,11,14,13],
       [3,4,7,6,12,13,16,15],
-    [4,5,8,7,13,14,17,16]
+      [4,5,8,7,13,14,17,16]
     ]))]
   )
+
+@pytest.fixture
+def hexQuadRaw():
+  return getHexQuadRaw()
 
 @pytest.fixture
 def hexQuad(hexQuadRaw):

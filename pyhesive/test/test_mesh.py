@@ -101,7 +101,6 @@ def test_full_stack(mesh,partition_data,subtests):
       pyh.partition_mesh(numpart)
       pyh.insert_elements()
       assert pyh == data["pyhesive_mesh"]
-
   return
 
 

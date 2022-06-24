@@ -21,7 +21,7 @@ from ._cell_set            import CellSet
 from ._partition_interface import PartitionInterface
 
 class Mesh:
-  __slots__ = ("log","cell_data","coords","cohesive_cells","_cache","__dict__")
+  __slots__ = ("log","cell_data","coords","cohesive_cells","__dict__")
 
   def __init_logger(self):
     slog = logging.getLogger(self.__class__.__name__)
@@ -63,8 +63,8 @@ class Mesh:
       else:
         # only one type of top-level cell class, so create it from the block
         cell_data = CellSet.from_CellBlock(cell_block)
-      coords = mesh.points
-      self._cache["meshio_mesh"] = mesh
+      coords           = mesh.points
+      self.meshio_mesh = mesh
     elif isinstance(mesh,self.__class__):
       cell_data      = mesh.cell_data
       coords         = mesh.coords
@@ -76,9 +76,9 @@ class Mesh:
     return cell_data,coords,cohesive_cells
 
   def __init__(self,mesh,copy=False):
-    self._cache = {}
+    self.dup_coords = None
+    self.log        = self.__init_logger()
     self.cell_data,self.coords,self.cohesive_cells = self.__get_cell_data(mesh,copy)
-    self.log = self.__init_logger()
     self.log.info("number of cells %d, vertices %d",len(self.cell_data.cells),len(self.coords))
     self.log.info(
       "cell dimension %d, type %s, number of faces per vertex %d",
@@ -166,14 +166,15 @@ class Mesh:
     return collections.Counter(flatten(partition_vertex_map))
 
   def __compute_partition_interface(self,partitions,global_adjacency_matrix=None):
-    boundary_faces = []
-    cell_set       = self.get_cell_data()[partitions]
-    faces_per_cell = len(cell_set.face_indices)
-    face_dim       = len(cell_set.face_indices[0])
     if global_adjacency_matrix is None:
-      adj_mat = self.adjacency_matrix[partitions,:][:,partitions]
-    else:
-      adj_mat = global_adjacency_matrix[partitions,:][:,partitions].to_lil()
+      global_adjacency_matrix = self.adjacency_matrix
+    adj_mat        = global_adjacency_matrix[partitions,:][:,partitions].asformat('lil')
+    cell_adjacency = self.cell_adjacency
+    boundary_faces = []
+    cell_data      = self.get_cell_data()
+    part_cell_data = cell_data[partitions]
+    faces_per_cell = len(part_cell_data.face_indices)
+    face_dim       = len(part_cell_data.face_indices[0])
     for row_idx,row in enumerate(adj_mat.data):
       sub_row         = adj_mat.rows[row_idx]
       local_neighbors = [sub_row[n] for n in [i for i,k in enumerate(row) if k == face_dim]]
@@ -182,23 +183,21 @@ class Mesh:
         # map local neighbor index to global cell ids
         mapped_local_set   = set(partitions[local_neighbors])
         # get the ids of all global neighbors
-        global_neighbors   = self.cell_adjacency[partitions[row_idx]]
+        global_neighbors   = cell_adjacency[partitions[row_idx]]
         # equivalent to set(globals).difference(mapped_local_set)
         exterior_neighbors = [n for n in global_neighbors if n not in mapped_local_set]
         # for all of my exterior neighbors, what faces do we have in common?
-        vertex_set     = set(cell_set.cells[row_idx])
-        exterior_faces = [
-          vertex_set.intersection(self.cell_data.cells[c]) for c in exterior_neighbors
-        ]
+        vertex_set     = set(part_cell_data.cells[row_idx])
+        exterior_faces = [vertex_set.intersection(cell_data.cells[c]) for c in exterior_neighbors]
         bd_faces       = []
         # loop over all possible faces of mine, and finding the indices for the mirrored
         # face for the exterior partner cell
-        for idx,face in enumerate(map(tuple,cell_set.cells[row_idx][cell_set.face_indices])):
+        for idx,face in enumerate(map(tuple,part_cell_data.cells[row_idx][part_cell_data.face_indices])):
           try:
             exteriorIdx = exterior_faces.index(set(face))
           except ValueError:
             continue
-          neighbor_vertices = self.cell_data.cells[exterior_neighbors[exteriorIdx]]
+          neighbor_vertices = cell_data.cells[exterior_neighbors[exteriorIdx]]
           neighbor_indices  = np.array([(neighbor_vertices == x).nonzero()[0][0] for x in face])
           bd_faces.append((face,exterior_neighbors[exteriorIdx],neighbor_indices))
         if self.log.isEnabledFor(logging.DEBUG):
@@ -218,11 +217,10 @@ class Mesh:
       # ValueError: not enough values to unpack (expected 3, got 0)
       f,si,sv = [],[],[]
     return PartitionInterface(
-      own_faces=np.array(f),mirror_ids=np.array(si),mirror_vertices=np.array(sv)
+      own_faces=np.asarray(f),mirror_ids=np.asarray(si),mirror_vertices=np.asarray(sv)
     )
 
   def __get_partition_interface_list(self,partitions):
-    #self.__assert_partitioned()
     if not hasattr(self,"partition_interfaces"):
       self.partition_interfaces = list(map(self.__compute_partition_interface,partitions))
     return self.partition_interfaces
@@ -297,14 +295,15 @@ class Mesh:
     Returns
     -------
     cell_data : CellSet
-      The cell data
+      The cell data, or None if it does not exist
     """
+    cell_data = self.cell_data
     if cohesive:
       try:
-        return self.cohesive_cells
+        cell_data = self.cohesive_cells
       except AttributeError:
-        return
-    return self.cell_data
+        cell_data = CellSet.from_POD(cell_data.cohesive_type,np.empty(0,dtype=cell_data.dtype))
+    return cell_data
 
   def get_cells(self,cohesive=False):
     """
@@ -324,10 +323,7 @@ class Mesh:
     -----
     Returns an empty array if cohesive is True and no cohesive elements exist
     """
-    cell_data = self.get_cell_data(cohesive=cohesive)
-    if cohesive and cell_data is None:
-      return np.array([])
-    return cell_data.cells
+    return self.get_cell_data(cohesive=cohesive).cells
 
   def get_vertices(self):
     """
@@ -358,6 +354,18 @@ class Mesh:
     return self.partitions
 
 
+  def __set_partitions(self,partitions,overwrite=True):
+    self.partitions = partitions
+    if overwrite:
+      for attr in ('adjacency_matrix','cell_adjacency','bd_set','cohesive_cells'):
+        setattr(self,attr,None)
+
+      self.adjacency_matrix        = self.compute_adjacency_matrix()
+      self.cell_adjacency,bd_faces = self.compute_closure(full_closure=False)
+      self.bd_set                  = set(flatten(bd_faces))
+    return partitions
+
+
   def partition_mesh(self,num_part=-1):
     """
     Partition the mesh
@@ -385,41 +393,40 @@ class Mesh:
     -----
     It is ok to pass 0 as num_part, in which case an empty tuple is returned.
     """
-    if num_part == 0:
-      self.partitions = tuple()
-      return self.partitions
-
-    cell_data = self.cell_data
-    n_cells   = len(cell_data)
-    if num_part == -1:
-      num_part = n_cells
-    elif num_part > n_cells:
-      self.log.warning(
-        "number of partitions %d > num cells %d, using num cells instead",num_part,n_cells
+    partitions = tuple()
+    overwrite  = True
+    if num_part != 0:
+      cell_data = self.get_cell_data()
+      n_cells   = len(cell_data)
+      if num_part == -1:
+        num_part = n_cells
+      elif num_part > n_cells:
+        self.log.warning(
+          "number of partitions %d > num cells %d, using num cells instead",num_part,n_cells
+        )
+      if num_part < n_cells:
+        overwrite                    = False
+        self.adjacency_matrix        = self.compute_adjacency_matrix()
+        self.cell_adjacency,bd_faces = self.compute_closure(full_closure=False)
+        self.bd_set                  = set(flatten(bd_faces))
+        ncuts,membership             = pymetis.part_graph(num_part,adjacency=self.cell_adjacency)
+        if ncuts == 0:
+          raise RuntimeError("no partitions were made by partitioner")
+        membership = np.array(membership)
+        partitions = tuple(np.argwhere(membership == p).ravel() for p in range(num_part))
+      else:
+        membership = np.array([x for x in range(n_cells)])
+        partitions = tuple(np.array([x]) for x in membership)
+      n_valid = sum(1 for partition in partitions if len(partition))
+      self.log.info(
+        "number of partitions requested %d, actual %d, average cells/partition %d",
+        num_part,n_valid,n_cells/n_valid
       )
-    self.adjacency_matrix        = self.compute_adjacency_matrix()
-    self.cell_adjacency,bd_faces = self.compute_closure(full_closure=False)
-    self.bd_set                  = set(flatten(bd_faces))
-    if num_part < n_cells:
-      ncuts,membership = pymetis.part_graph(num_part,adjacency=self.cell_adjacency)
-      if ncuts == 0:
-        raise RuntimeError("no partitions were made by partitioner")
-      membership = np.array(membership)
-      partitions = tuple(np.argwhere(membership == p).ravel() for p in range(num_part))
-    else:
-      membership = np.array([x for x in range(n_cells)])
-      partitions = tuple(np.array([x]) for x in membership)
-    self.partitions = partitions
-    n_valid = sum(1 for partition in self.partitions if len(partition))
-    self.log.info(
-      "number of partitions requested %d, actual %d, average cells/partition %d",
-      num_part,n_valid,n_cells/n_valid
-    )
-    part_count_sum = sum(len(partition) for partition in self.partitions)
-    if part_count_sum != n_cells:
-      err = "Partition cell-count sum {} != global number of cells {}".format(part_count_sum,n_cells)
-      raise RuntimeError(err)
-    return self.partitions
+      part_count_sum = sum(len(partition) for partition in partitions)
+      if part_count_sum != n_cells:
+        err = "Partition cell-count sum {} != global number of cells {}".format(part_count_sum,n_cells)
+        raise RuntimeError(err)
+    return self.__set_partitions(partitions,overwrite=overwrite)
 
   def compute_adjacency_matrix(self,cells=None,format="lil",v2v=False):
     def mat_size(a):
@@ -438,7 +445,7 @@ class Mesh:
     element_ids[:] = np.arange(ne).reshape(-1,1)
     cell_dim       = len(element_ids[0])
     v2c            = scp.coo_matrix((
-      np.ones((ne*cell_dim,),dtype=np.intp),
+      np.ones((ne*cell_dim,),dtype=element_ids.dtype),
       (cells.ravel(),element_ids.ravel(),)
     )).tocsr(copy=False)
     if version_info >= (3,5):
@@ -459,8 +466,7 @@ class Mesh:
       v2v = v2v.asformat(format,copy=False)
       self.log.debug("v2v mat size after compression %d bytes",mat_size(v2v))
       return c2c,v2v
-    else:
-      return c2c
+    return c2c
 
   def compute_closure(self,cell_set=None,adj_mat=None,full_closure=True):
     if cell_set is None:
@@ -584,8 +590,8 @@ class Mesh:
     if partitions is None:
       partitions = self.get_partitions()
 
-    self.dup_coords = None
-    if partitions:
+    if len(partitions):
+      self.__set_partitions(partitions)
       source_vertices,mapped_vertices = self.remap_vertices(partitions)
       cells          = np.hstack((mapped_vertices,source_vertices))
       cohesive_type  = self.get_cell_data().cohesive_type

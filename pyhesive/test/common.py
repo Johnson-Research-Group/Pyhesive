@@ -13,7 +13,8 @@ import meshio
 import pytest
 import numpy as np
 
-cur_dir = os.path.basename(os.getcwd())
+test_root_dir = None
+cur_dir       = os.path.basename(os.getcwd())
 if cur_dir == "test":
   test_root_dir = os.getcwd()
 elif cur_dir == "pyhesive":
@@ -24,9 +25,13 @@ elif cur_dir == "pyhesive":
   elif "pyhesive" in os.listdir():
     # we are in root pyhesive dir
     test_root_dir = os.path.join(os.getcwd(),"pyhesive","test")
-  else:
-    raise RuntimeError("Cannot determine location")
-else:
+elif cur_dir == "examples":
+  parent_dir = os.path.basename(os.path.dirname(os.getcwd()))
+  if parent_dir == "pyhesive":
+    # we are in pyhesive/examples, i.e. the example dir
+    test_root_dir = os.path.join(parent_dir,"pyhesive","test")
+
+if test_root_dir is None:
   raise RuntimeError("Cannot determine location")
 
 test_root_dir   = os.path.realpath(os.path.expanduser(test_root_dir))
